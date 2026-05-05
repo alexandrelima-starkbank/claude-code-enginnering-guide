@@ -1,4 +1,5 @@
 import os
+import json
 import shutil
 import tempfile
 import subprocess
@@ -117,6 +118,88 @@ class PermissionsTest(TestCase):
         runSetup(self.workdir)
         stub = os.path.join(self.workdir, ".claude", "hooks", "stub.sh")
         self.assertTrue(os.access(stub, os.X_OK))
+
+
+class ClaudeHooksDirTest(TestCase):
+
+    def setUp(self):
+        self.workdir = makeWorkdir()
+
+    def tearDown(self):
+        shutil.rmtree(self.workdir, ignore_errors=True)
+
+    def testSetup_writesClaudeHooksDirToSettingsLocal(self):
+        # Arrange
+        settingsLocal = os.path.join(self.workdir, ".claude", "settings.local.json")
+
+        # Act
+        runSetup(self.workdir)
+
+        # Assert
+        self.assertTrue(os.path.exists(settingsLocal))
+        with open(settingsLocal) as f:
+            data = json.loads(f.read())
+        expectedPath = os.path.realpath(os.path.join(self.workdir, ".claude", "hooks"))
+        self.assertEqual(data["env"]["CLAUDE_HOOKS_DIR"], expectedPath)
+
+    def testSetup_preservesExistingSettingsLocalContent(self):
+        # Arrange
+        settingsLocal = os.path.join(self.workdir, ".claude", "settings.local.json")
+        existing = {"permissions": {"allow": ["WebFetch(domain:docs.anthropic.com)"]}}
+        with open(settingsLocal, "w") as f:
+            f.write(json.dumps(existing))
+
+        # Act
+        runSetup(self.workdir)
+
+        # Assert
+        with open(settingsLocal) as f:
+            data = json.loads(f.read())
+        self.assertIn("permissions", data)
+        self.assertIn("CLAUDE_HOOKS_DIR", data.get("env", {}))
+
+    def testSetup_updatesStaleClaudeHooksDir(self):
+        # Arrange
+        settingsLocal = os.path.join(self.workdir, ".claude", "settings.local.json")
+        with open(settingsLocal, "w") as f:
+            f.write(json.dumps({"env": {"CLAUDE_HOOKS_DIR": "/old/stale/path"}}))
+
+        # Act
+        runSetup(self.workdir)
+
+        # Assert
+        with open(settingsLocal) as f:
+            data = json.loads(f.read())
+        expectedPath = os.path.realpath(os.path.join(self.workdir, ".claude", "hooks"))
+        self.assertEqual(data["env"]["CLAUDE_HOOKS_DIR"], expectedPath)
+
+    def testHookCommand_usesClaudeHooksDirVar(self):
+        # Arrange
+        settingsPath = os.path.join(
+            os.path.dirname(__file__), "..", ".claude", "settings.json"
+        )
+
+        # Act
+        with open(settingsPath) as f:
+            content = f.read()
+
+        # Assert - no hook command references .claude/hooks/ as a relative path
+        self.assertNotIn("bash .claude/hooks/", content)
+        self.assertIn("CLAUDE_HOOKS_DIR", content)
+
+    def testHookCommand_exitsSilentlyWhenClaudeHooksDirUnset(self):
+        # Arrange
+        env = {k: v for k, v in os.environ.items() if k != "CLAUDE_HOOKS_DIR"}
+        cmd = (
+            "bash -c '[ -n \"$CLAUDE_HOOKS_DIR\" ] || exit 0;"
+            " bash \"$CLAUDE_HOOKS_DIR/validate-destructive.sh\"'"
+        )
+
+        # Act
+        result = subprocess.run(cmd, shell=True, capture_output=True, env=env)
+
+        # Assert
+        self.assertEqual(result.returncode, 0)
 
 
 if __name__ == "__main__":

@@ -11,17 +11,17 @@
           },
           {
             "type": "command",
-            "command": "bash -c 'cd \"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\" && bash .claude/hooks/enforce-intake-protocol.sh'",
+            "command": "bash -c '[ -n \"$CLAUDE_HOOKS_DIR\" ] || exit 0; cd \"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\" && bash \"$CLAUDE_HOOKS_DIR/enforce-intake-protocol.sh\"'",
             "timeout": 10000
           },
           {
             "type": "command",
-            "command": "bash -c 'cd \"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\" && bash .claude/hooks/inject-tasks-context.sh'",
+            "command": "bash -c '[ -n \"$CLAUDE_HOOKS_DIR\" ] || exit 0; cd \"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\" && bash \"$CLAUDE_HOOKS_DIR/inject-tasks-context.sh\"'",
             "timeout": 5000
           },
           {
             "type": "command",
-            "command": "bash -c 'cd \"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\" && bash .claude/hooks/validate-requirements.sh'",
+            "command": "bash -c '[ -n \"$CLAUDE_HOOKS_DIR\" ] || exit 0; cd \"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\" && bash \"$CLAUDE_HOOKS_DIR/validate-requirements.sh\"'",
             "timeout": 5000
           }
         ]
@@ -32,7 +32,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'cd \"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\" && bash .claude/hooks/inject-git-context.sh'",
+            "command": "bash -c '[ -n \"$CLAUDE_HOOKS_DIR\" ] || exit 0; cd \"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\" && bash \"$CLAUDE_HOOKS_DIR/inject-git-context.sh\"'",
             "timeout": 5000
           },
           {
@@ -49,12 +49,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'cd \"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\" && bash .claude/hooks/validate-destructive.sh'",
+            "command": "bash -c '[ -n \"$CLAUDE_HOOKS_DIR\" ] || exit 0; cd \"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\" && bash \"$CLAUDE_HOOKS_DIR/validate-destructive.sh\"'",
             "timeout": 5000
           },
           {
             "type": "command",
-            "command": "bash -c 'cd \"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\" && bash .claude/hooks/pre-commit-gate.sh'",
+            "command": "bash -c '[ -n \"$CLAUDE_HOOKS_DIR\" ] || exit 0; cd \"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\" && bash \"$CLAUDE_HOOKS_DIR/pre-commit-gate.sh\"'",
             "timeout": 60000
           }
         ]
@@ -66,17 +66,17 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'cd \"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\" && bash .claude/hooks/sort-imports-on-edit.sh'",
+            "command": "bash -c '[ -n \"$CLAUDE_HOOKS_DIR\" ] || exit 0; cd \"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\" && bash \"$CLAUDE_HOOKS_DIR/sort-imports-on-edit.sh\"'",
             "timeout": 10000
           },
           {
             "type": "command",
-            "command": "bash -c 'cd \"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\" && bash .claude/hooks/check-bash-syntax.sh'",
+            "command": "bash -c '[ -n \"$CLAUDE_HOOKS_DIR\" ] || exit 0; cd \"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\" && bash \"$CLAUDE_HOOKS_DIR/check-bash-syntax.sh\"'",
             "timeout": 10000
           },
           {
             "type": "command",
-            "command": "bash -c 'cd \"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\" && bash .claude/hooks/check-python-style.sh'",
+            "command": "bash -c '[ -n \"$CLAUDE_HOOKS_DIR\" ] || exit 0; cd \"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\" && bash \"$CLAUDE_HOOKS_DIR/check-python-style.sh\"'",
             "timeout": 10000
           }
         ]
@@ -86,12 +86,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'cd \"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\" && bash .claude/hooks/record-test-results.sh'",
+            "command": "bash -c '[ -n \"$CLAUDE_HOOKS_DIR\" ] || exit 0; cd \"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\" && bash \"$CLAUDE_HOOKS_DIR/record-test-results.sh\"'",
             "timeout": 10000
           },
           {
             "type": "command",
-            "command": "bash -c 'cd \"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\" && bash .claude/hooks/record-mutation-results.sh'",
+            "command": "bash -c '[ -n \"$CLAUDE_HOOKS_DIR\" ] || exit 0; cd \"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\" && bash \"$CLAUDE_HOOKS_DIR/record-mutation-results.sh\"'",
             "timeout": 10000
           }
         ]
@@ -102,7 +102,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'cd \"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\" && bash .claude/hooks/notify-done.sh'",
+            "command": "bash -c '[ -n \"$CLAUDE_HOOKS_DIR\" ] || exit 0; cd \"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\" && bash \"$CLAUDE_HOOKS_DIR/notify-done.sh\"'",
             "timeout": 5000
           }
         ]

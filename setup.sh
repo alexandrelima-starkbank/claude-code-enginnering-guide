@@ -233,6 +233,19 @@ else
     fail "não foi possível aplicar permissões em .claude/hooks/ — rode a partir da raiz do projeto"
 fi
 
+# ─── CLAUDE_HOOKS_DIR — portabilidade dos hooks ───────────────────────────────
+if command -v jq &>/dev/null && [ -d ".claude/hooks" ]; then
+    HOOKS_ABS="$(pwd)/.claude/hooks"
+    SETTINGS_LOCAL=".claude/settings.local.json"
+    if [ -f "$SETTINGS_LOCAL" ]; then
+        TMP=$(jq --arg d "$HOOKS_ABS" '.env.CLAUDE_HOOKS_DIR = $d' "$SETTINGS_LOCAL")
+    else
+        TMP=$(jq -n --arg d "$HOOKS_ABS" '{"env":{"CLAUDE_HOOKS_DIR":$d}}')
+    fi
+    echo "$TMP" > "$SETTINGS_LOCAL"
+    ok "CLAUDE_HOOKS_DIR configurado em .claude/settings.local.json"
+fi
+
 # ─── resultado ────────────────────────────────────────────────────────────────
 echo ""
 if [ "$FAILED" -eq 0 ]; then
