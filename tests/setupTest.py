@@ -187,19 +187,39 @@ class ClaudeHooksDirTest(TestCase):
         self.assertNotIn("bash .claude/hooks/", content)
         self.assertIn("CLAUDE_HOOKS_DIR", content)
 
-    def testHookCommand_exitsSilentlyWhenClaudeHooksDirUnset(self):
+    def testHookCommand_blocksWhenClaudeHooksDirUnset(self):
         # Arrange
-        env = {k: v for k, v in os.environ.items() if k != "CLAUDE_HOOKS_DIR"}
-        cmd = (
-            "bash -c '[ -n \"$CLAUDE_HOOKS_DIR\" ] || exit 0;"
-            " bash \"$CLAUDE_HOOKS_DIR/validate-destructive.sh\"'"
+        settingsPath = os.path.join(
+            os.path.dirname(__file__), "..", ".claude", "settings.json"
         )
+        with open(settingsPath) as f:
+            data = json.loads(f.read())
+        cmd = data["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+        env = {k: v for k, v in os.environ.items() if k != "CLAUDE_HOOKS_DIR"}
 
         # Act
-        result = subprocess.run(cmd, shell=True, capture_output=True, env=env)
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, env=env)
 
         # Assert
-        self.assertEqual(result.returncode, 0)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("setup.sh", result.stderr + result.stdout)
+
+    def testHookCommand_blocksWhenClaudeHooksDirInvalid(self):
+        # Arrange
+        settingsPath = os.path.join(
+            os.path.dirname(__file__), "..", ".claude", "settings.json"
+        )
+        with open(settingsPath) as f:
+            data = json.loads(f.read())
+        cmd = data["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+        env = {**os.environ, "CLAUDE_HOOKS_DIR": "/nonexistent/path"}
+
+        # Act
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, env=env)
+
+        # Assert
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("setup.sh", result.stderr + result.stdout)
 
 
 if __name__ == "__main__":
