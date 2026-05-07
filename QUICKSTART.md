@@ -29,10 +29,11 @@ Todo trabalho passa por estas fases **em ordem** — nenhuma pode ser pulada:
 
 | Fase | O que acontece |
 |------|---------------|
-| `requirements` | Requisitos EARS elicitados e aprovados pelo engenheiro |
+| `requirements` | Requisitos EARS elicitados, aprovados e avaliados por quality scoring |
 | `spec` | Cenários Given/When/Then derivados dos EARS e aprovados |
+| `plan` | Escopo técnico: arquivos e componentes aprovados pelo engenheiro |
 | `tests` | Testes escritos (falham primeiro), qualidade avaliada |
-| `implementation` | Código mínimo para os testes passarem |
+| `implementation` | Código mínimo para os testes passarem (scope enforcement ativo) |
 | `mutation` | Mutation score 100% — sem gaps de teste |
 | `done` | Auditoria READY, tarefa concluída |
 
@@ -97,12 +98,13 @@ pipeline export metrics                     # métricas agregadas de todos os pr
 ```
 1. Engenheiro descreve a necessidade em linguagem natural
 2. Modelo conduz Intake Protocol → cria tarefa no banco
-3. Modelo elicita EARS → engenheiro aprova
+3. Modelo elicita EARS → avalia quality scores → engenheiro aprova
 4. Modelo deriva spec BDD → engenheiro aprova
-5. Modelo escreve testes (falham) → avalia qualidade
-6. Modelo implementa o mínimo → testes passam
-7. Modelo roda mutmut → 100% score
-8. /pipeline-audit T<N> → READY ✓ → merge
+5. Modelo propõe plano técnico (arquivos + componentes) → engenheiro aprova
+6. Modelo escreve testes (falham) → avalia qualidade
+7. Modelo implementa o mínimo → testes passam (scope enforcement ativo)
+8. Modelo roda mutmut → 100% score
+9. /pipeline-audit T<N> → READY ✓ → merge
 ```
 
 Resultados de pytest e mutmut são registrados automaticamente no banco pelos hooks.

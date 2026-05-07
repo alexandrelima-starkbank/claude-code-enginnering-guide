@@ -17,13 +17,14 @@ pelo modelo, auditada via `pipeline audit`, e documentada automaticamente no ban
 ## Fases e Invariantes
 
 ```
-requirements → spec → tests → implementation → mutation → done
+requirements → spec → plan → tests → implementation → mutation → done
 ```
 
 | Fase | Invariante para avançar | Métrica coletada |
 |------|------------------------|-----------------|
-| `requirements` | ≥1 EARS aprovado, sem ambiguidade, testável | N requisitos, N aprovados |
+| `requirements` | ≥1 EARS aprovado, quality scores registrados | N requisitos, N aprovados |
 | `spec` | ≥1 cenário por EARS, todos aprovados, test method mapeado | N cenários, ratio por requisito |
+| `plan` | plan aprovado com scope de arquivos e componentes | N arquivos, N componentes |
 | `tests` | todos os métodos existem no código, todos falham antes da implementação | N testes, N falhando |
 | `implementation` | todos os testes passam | N testes, N passando |
 | `mutation` | mutation score 100% (exceto equivalentes justificados) | N mutantes, N mortos, score |
@@ -51,8 +52,9 @@ Os únicos toques humanos obrigatórios são:
 Transição de fase é irreversível via CLI. O comando `pipeline phase advance` rejeita saltos:
 
 ```
-requirements → spec      requer: EARS aprovados
-spec → tests             requer: critérios aprovados, test methods mapeados
+requirements → spec      requer: EARS aprovados + quality scores registrados
+spec → plan              requer: critérios aprovados, test methods mapeados
+plan → tests             requer: plan aprovado (blast-radius advisory exibido)
 tests → implementation   requer: testes executados (ao menos 1 registrado)
 implementation → mutation requer: todos os testes passando
 mutation → done          requer: mutation score = 100%
