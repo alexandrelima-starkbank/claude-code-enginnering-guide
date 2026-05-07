@@ -12,7 +12,6 @@ def _patchedParseDecls(self, *args):
     return name, opts, secondary
 click.core.Argument._parse_decls = _patchedParseDecls
 
-import os
 from .db import (
     initDb, detectProject, ensureProject, listProjects,
     createTask, getTask, listTasks, updateTask,
@@ -24,23 +23,10 @@ from .db import (
     recordMutation, getLatestMutation,
     createIncident, updateIncident,
     getTaskAudit,
-    addEarsQualityScores, getEarsQualityScores,
 )
 from .export import generateTasksMd, formatTask
-from .llm import evaluateQuality
 from . import vector
 from .indexer import indexDirectory, generateContextSection, indexFile, indexProject
-
-QUALITY_DIMENSIONS = [
-    "Risco",
-    "Impacto",
-    "Subjetividade",
-    "Ambiguidade",
-    "Conflitos de decisao",
-    "Ausencia de criterios de aceite",
-    "Cobertura de criterios de aceite",
-    "Casos de uso bem definidos",
-]
 
 
 def autoRegenTasksMd():
@@ -251,45 +237,15 @@ def earsList(taskId, fmt):
         click.echo("[{0}][{1}] ({2}) {3}".format(r["id"], approved, r["pattern"], r["text"]))
 
 
-def _printQualityScores(label, scores):
-    click.echo("\n--- quality score: {0} ---".format(label))
-    for entry in scores:
-        prefix = "LOW SCORE" if entry["score"] < 4 else "      ok "
-        click.echo("  [{0}] {1}: {2}/10 — {3}".format(
-            prefix, entry["dimension"], entry["score"], entry.get("justification", ""),
-        ))
-
-
 @ears.command("approve")
 @click.argument("taskId")
 @click.argument("reqId", default="all")
 def earsApprove(taskId, reqId):
     if reqId == "all":
-        reqs = listEars(taskId)
-        for req in reqs:
-            scores = evaluateQuality([req["text"]], QUALITY_DIMENSIONS)
-            if not scores:
-                click.echo("Quality scoring ignorado para {0} (sem API key ou erro).".format(req["id"]))
-            if scores:
-                addEarsQualityScores(taskId, scores, earsId=req["id"], scope="individual")
-                _printQualityScores(req["id"], scores)
-        allTexts = [r["text"] for r in reqs]
-        aggregateScores = evaluateQuality(allTexts, QUALITY_DIMENSIONS)
-        if aggregateScores:
-            addEarsQualityScores(taskId, aggregateScores, earsId=None, scope="aggregate")
-            click.echo("\n--- score agregado ---")
-            _printQualityScores("agregado", aggregateScores)
         approveAllEars(taskId)
-        click.echo("\nTodos os EARS aprovados para {0}.".format(taskId))
+        click.echo("Todos os EARS aprovados para {0}.".format(taskId))
         autoRegenTasksMd()
         return
-    req = next((r for r in listEars(taskId) if r["id"] == reqId), None)
-    scores = evaluateQuality([req["text"]] if req else [], QUALITY_DIMENSIONS) if req else []
-    if not scores:
-        click.echo("Quality scoring ignorado (sem API key ou erro).")
-    if scores:
-        addEarsQualityScores(taskId, scores, earsId=reqId, scope="individual")
-        _printQualityScores(reqId, scores)
     approveEars(taskId, reqId)
     click.echo("{0} aprovado.".format(reqId))
     autoRegenTasksMd()
