@@ -45,6 +45,16 @@
     ],
     "PreToolUse": [
       {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c '[ -n \"$CLAUDE_HOOKS_DIR\" ] || { echo \"ERRO: CLAUDE_HOOKS_DIR ausente — rode setup.sh\" >&2; exit 1; }; [ -d \"$CLAUDE_HOOKS_DIR\" ] || { echo \"ERRO: CLAUDE_HOOKS_DIR invalido ($CLAUDE_HOOKS_DIR) — rode setup.sh\" >&2; exit 1; }; cd \"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\" && bash \"$CLAUDE_HOOKS_DIR/check-scope.sh\"'",
+            "timeout": 5000
+          }
+        ]
+      },
+      {
         "matcher": "Bash",
         "hooks": [
           {

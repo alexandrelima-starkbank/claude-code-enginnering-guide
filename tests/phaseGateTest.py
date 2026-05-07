@@ -1,10 +1,10 @@
 import os
 import sys
 import tempfile
-from contextlib import contextmanager
 from pathlib import Path
 from unittest import TestCase
 from unittest.mock import patch
+from contextlib import contextmanager
 
 PROJECT_ROOT = os.path.join(os.path.dirname(__file__), "..")
 sys.path.insert(0, os.path.join(PROJECT_ROOT, "pipeline-cli"))
@@ -66,9 +66,9 @@ class PhaseGateTest(TestCase):
 
             self.assertEqual(db.getTask(taskId)["phase"], "spec")
 
-    # ── R02: spec → tests ─────────────────────────────────────────────────────
+    # ── R02: spec → plan (criteria/testMethod gate moved here) ───────────────
 
-    def testAdvanceToTests_WithEarsHavingNoCriterion_Rejects(self):
+    def testAdvanceToPlan_WithEarsHavingNoCriterion_Rejects(self):
         # Critério: lança ValueError identificando o EARS sem critério
         with useTempDb():
             db.initDb()
@@ -77,11 +77,11 @@ class PhaseGateTest(TestCase):
             db.advancePhase(taskId, "spec")
 
             with self.assertRaises(ValueError) as ctx:
-                db.advancePhase(taskId, "tests")
+                db.advancePhase(taskId, "plan")
 
             self.assertIn("critério", str(ctx.exception))
 
-    def testAdvanceToTests_WithCriterionMissingTestMethod_Rejects(self):
+    def testAdvanceToPlan_WithCriterionMissingTestMethod_Rejects(self):
         # Critério: lança ValueError identificando o critério sem testMethod
         with useTempDb():
             db.initDb()
@@ -92,18 +92,21 @@ class PhaseGateTest(TestCase):
             db.approveCriterion(taskId, cId)
 
             with self.assertRaises(ValueError) as ctx:
-                db.advancePhase(taskId, "tests")
+                db.advancePhase(taskId, "plan")
 
             self.assertIn("testMethod", str(ctx.exception))
 
-    def testAdvanceToTests_WithCompleteCriteria_Succeeds(self):
-        # Critério: executa sem erro quando cada EARS tem critério aprovado com testMethod
+    def testAdvanceToPlan_WithCompleteCriteria_AndThenToTests_Succeeds(self):
+        # Critério: spec→plan com critérios completos, depois plan→tests com plan aprovado
         with useTempDb():
             db.initDb()
             taskId = self._setup()
             earsId = self._addApprovedEars(taskId)
             db.advancePhase(taskId, "spec")
             self._addApprovedCriterion(taskId, earsId, testMethod="testSomething")
+            db.advancePhase(taskId, "plan")
+            planId = db.createPlan(taskId, "test plan")
+            db.approvePlan(taskId, planId)
 
             db.advancePhase(taskId, "tests")
 
@@ -119,6 +122,9 @@ class PhaseGateTest(TestCase):
             earsId = self._addApprovedEars(taskId)
             db.advancePhase(taskId, "spec")
             self._addApprovedCriterion(taskId, earsId, testMethod="testFoo")
+            db.advancePhase(taskId, "plan")
+            planId = db.createPlan(taskId, "p")
+            db.approvePlan(taskId, planId)
             db.advancePhase(taskId, "tests")
 
             with self.assertRaises(ValueError) as ctx:
@@ -134,6 +140,9 @@ class PhaseGateTest(TestCase):
             earsId = self._addApprovedEars(taskId)
             db.advancePhase(taskId, "spec")
             self._addApprovedCriterion(taskId, earsId, testMethod="testFoo")
+            db.advancePhase(taskId, "plan")
+            planId = db.createPlan(taskId, "p")
+            db.approvePlan(taskId, planId)
             db.advancePhase(taskId, "tests")
             db.recordTest(taskId, "testFoo", False)
 
@@ -150,6 +159,9 @@ class PhaseGateTest(TestCase):
             earsId = self._addApprovedEars(taskId)
             db.advancePhase(taskId, "spec")
             self._addApprovedCriterion(taskId, earsId, testMethod="testFoo")
+            db.advancePhase(taskId, "plan")
+            planId = db.createPlan(taskId, "p")
+            db.approvePlan(taskId, planId)
             db.advancePhase(taskId, "tests")
             db.recordTest(taskId, "testFoo", True)
 
@@ -163,6 +175,9 @@ class PhaseGateTest(TestCase):
         earsId = self._addApprovedEars(taskId)
         db.advancePhase(taskId, "spec")
         self._addApprovedCriterion(taskId, earsId, testMethod="testFoo")
+        db.advancePhase(taskId, "plan")
+        planId = db.createPlan(taskId, "p")
+        db.approvePlan(taskId, planId)
         db.advancePhase(taskId, "tests")
         db.recordTest(taskId, "testFoo", True)
         db.advancePhase(taskId, "implementation")
