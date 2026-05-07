@@ -1,3 +1,4 @@
+import os
 import sys
 from json import dumps
 from pathlib import Path
@@ -17,6 +18,7 @@ from .db import (
     createTask, getTask, listTasks, updateTask,
     advancePhase, checkPhaseGates, getPhaseHistory, PHASES,
     addEars, listEars, approveEars, approveAllEars,
+    addEarsQualityScores, getEarsQualityScores,
     addCriterion, listCriteria, approveCriterion, approveAllCriteria,
     setTestQuality,
     recordTest, getTestSummary,
@@ -27,6 +29,7 @@ from .db import (
 from .export import generateTasksMd, formatTask
 from . import vector
 from .indexer import indexDirectory, generateContextSection, indexFile, indexProject
+from .llm import evaluateQuality
 
 
 def autoRegenTasksMd():
@@ -249,6 +252,62 @@ def earsApprove(taskId, reqId):
     approveEars(taskId, reqId)
     click.echo("{0} aprovado.".format(reqId))
     autoRegenTasksMd()
+
+
+_SCORE_DIMENSIONS = [
+    "Ambiguidade",
+    "Ausencia de criterios de aceite",
+    "Casos de uso bem definidos",
+    "Cobertura de criterios de aceite",
+    "Conflitos de decisao",
+    "Impacto",
+    "Risco",
+    "Subjetividade",
+]
+
+
+@ears.command("score")
+@click.argument("taskId")
+def earsScore(taskId):
+    apiKey = os.environ.get("ANTHROPIC_API_KEY")
+    if not apiKey:
+        click.echo("AVISO: ANTHROPIC_API_KEY não configurada — scoring ignorado.")
+        return
+    reqs = listEars(taskId)
+    approved = [r for r in reqs if r["approved"]]
+    if not approved:
+        click.echo("Nenhum EARS aprovado para {0}.".format(taskId))
+        return
+    for r in approved:
+        scores = evaluateQuality([r["text"]], _SCORE_DIMENSIONS)
+        if not scores:
+            click.echo("AVISO: falha ao avaliar {0} — scoring abortado.".format(r["id"]))
+            return
+        addEarsQualityScores(taskId, scores, earsId=r["id"], scope="individual")
+        click.echo("\n{0} — Score individual:".format(r["id"]))
+        for s in sorted(scores, key=lambda x: x["dimension"]):
+            flag = "  ⚠ LOW SCORE" if s["score"] < 4 else ""
+            click.echo("  {dim}: {score}/10{flag}  {just}".format(
+                dim=s["dimension"],
+                score=s["score"],
+                flag=flag,
+                just=s.get("justification", ""),
+            ))
+    allTexts = [r["text"] for r in approved]
+    aggScores = evaluateQuality(allTexts, _SCORE_DIMENSIONS)
+    if not aggScores:
+        click.echo("AVISO: falha ao avaliar conjunto — scoring agregado ignorado.")
+        return
+    addEarsQualityScores(taskId, aggScores, earsId=None, scope="aggregate")
+    click.echo("\nScore agregado (todos os EARS):")
+    for s in sorted(aggScores, key=lambda x: x["dimension"]):
+        flag = "  ⚠ LOW SCORE" if s["score"] < 4 else ""
+        click.echo("  {dim}: {score}/10{flag}  {just}".format(
+            dim=s["dimension"],
+            score=s["score"],
+            flag=flag,
+            just=s.get("justification", ""),
+        ))
 
 
 # ─── CRITERION ────────────────────────────────────────────────────────────────

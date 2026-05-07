@@ -278,6 +278,16 @@ def _checkPhaseGates(task, toPhase):
             else "{0} EARS".format(len(ears))
         )
         results.append(("EARS aprovados", passed, detail))
+        approvedEars = [r for r in ears if r["approved"]]
+        if approvedEars:
+            scores = getEarsQualityScores(taskId)
+            passedScores = bool(scores)
+            detailScores = (
+                "{0} score(s) registrados".format(len(scores))
+                if passedScores
+                else "quality scoring não executado — rode 'pipeline ears score {0}'".format(taskId)
+            )
+            results.append(("Quality scores", passedScores, detailScores))
 
     if fromPhase == "spec" and toPhase == "plan":
         ears = listEars(taskId)

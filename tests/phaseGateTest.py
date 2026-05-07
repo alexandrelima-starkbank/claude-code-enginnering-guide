@@ -35,6 +35,19 @@ class PhaseGateTest(TestCase):
         db.approveEars(taskId, earsId)
         return earsId
 
+    def _addQualityScores(self, taskId, earsId=None):
+        db.addEarsQualityScores(
+            taskId,
+            [{"dimension": "Risco", "score": 8, "justification": "ok"}],
+            earsId=earsId,
+        )
+
+    def _advanceToSpec(self, taskId):
+        earsId = self._addApprovedEars(taskId)
+        self._addQualityScores(taskId, earsId=earsId)
+        db.advancePhase(taskId, "spec")
+        return earsId
+
     def _addApprovedCriterion(self, taskId, earsId, testMethod="testSomething"):
         cId = db.addCriterion(taskId, earsId, "scenario", "then text", testMethod=testMethod)
         db.approveCriterion(taskId, cId)
@@ -55,12 +68,25 @@ class PhaseGateTest(TestCase):
 
             self.assertIn("EARS", str(ctx.exception))
 
-    def testAdvanceToSpec_WithAllEarsApproved_Succeeds(self):
-        # Critério: executa sem erro e fase muda para spec
+    def testAdvanceToSpec_WithNoQualityScores_Rejects(self):
+        # Critério: lança ValueError quando EARS aprovados mas sem quality scores
         with useTempDb():
             db.initDb()
             taskId = self._setup()
             self._addApprovedEars(taskId)
+
+            with self.assertRaises(ValueError) as ctx:
+                db.advancePhase(taskId, "spec")
+
+            self.assertIn("quality", str(ctx.exception).lower())
+
+    def testAdvanceToSpec_WithQualityScores_Succeeds(self):
+        # Critério: executa sem erro quando EARS aprovados e quality scores registrados
+        with useTempDb():
+            db.initDb()
+            taskId = self._setup()
+            earsId = self._addApprovedEars(taskId)
+            db.addEarsQualityScores(taskId, [{"dimension": "Risco", "score": 8, "justification": "ok"}], earsId=earsId)
 
             db.advancePhase(taskId, "spec")
 
@@ -73,8 +99,7 @@ class PhaseGateTest(TestCase):
         with useTempDb():
             db.initDb()
             taskId = self._setup()
-            self._addApprovedEars(taskId)
-            db.advancePhase(taskId, "spec")
+            self._advanceToSpec(taskId)
 
             with self.assertRaises(ValueError) as ctx:
                 db.advancePhase(taskId, "plan")
@@ -86,8 +111,7 @@ class PhaseGateTest(TestCase):
         with useTempDb():
             db.initDb()
             taskId = self._setup()
-            earsId = self._addApprovedEars(taskId)
-            db.advancePhase(taskId, "spec")
+            earsId = self._advanceToSpec(taskId)
             cId = db.addCriterion(taskId, earsId, "scenario", "then", testMethod=None)
             db.approveCriterion(taskId, cId)
 
@@ -101,8 +125,7 @@ class PhaseGateTest(TestCase):
         with useTempDb():
             db.initDb()
             taskId = self._setup()
-            earsId = self._addApprovedEars(taskId)
-            db.advancePhase(taskId, "spec")
+            earsId = self._advanceToSpec(taskId)
             self._addApprovedCriterion(taskId, earsId, testMethod="testSomething")
             db.advancePhase(taskId, "plan")
             planId = db.createPlan(taskId, "test plan")
@@ -119,8 +142,7 @@ class PhaseGateTest(TestCase):
         with useTempDb():
             db.initDb()
             taskId = self._setup()
-            earsId = self._addApprovedEars(taskId)
-            db.advancePhase(taskId, "spec")
+            earsId = self._advanceToSpec(taskId)
             self._addApprovedCriterion(taskId, earsId, testMethod="testFoo")
             db.advancePhase(taskId, "plan")
             planId = db.createPlan(taskId, "p")
@@ -137,8 +159,7 @@ class PhaseGateTest(TestCase):
         with useTempDb():
             db.initDb()
             taskId = self._setup()
-            earsId = self._addApprovedEars(taskId)
-            db.advancePhase(taskId, "spec")
+            earsId = self._advanceToSpec(taskId)
             self._addApprovedCriterion(taskId, earsId, testMethod="testFoo")
             db.advancePhase(taskId, "plan")
             planId = db.createPlan(taskId, "p")
@@ -156,8 +177,7 @@ class PhaseGateTest(TestCase):
         with useTempDb():
             db.initDb()
             taskId = self._setup()
-            earsId = self._addApprovedEars(taskId)
-            db.advancePhase(taskId, "spec")
+            earsId = self._advanceToSpec(taskId)
             self._addApprovedCriterion(taskId, earsId, testMethod="testFoo")
             db.advancePhase(taskId, "plan")
             planId = db.createPlan(taskId, "p")
@@ -172,8 +192,7 @@ class PhaseGateTest(TestCase):
     # ── R04: mutation → done ──────────────────────────────────────────────────
 
     def _advanceToMutation(self, taskId):
-        earsId = self._addApprovedEars(taskId)
-        db.advancePhase(taskId, "spec")
+        earsId = self._advanceToSpec(taskId)
         self._addApprovedCriterion(taskId, earsId, testMethod="testFoo")
         db.advancePhase(taskId, "plan")
         planId = db.createPlan(taskId, "p")
