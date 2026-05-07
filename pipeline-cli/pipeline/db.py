@@ -1,13 +1,13 @@
-from sqlite3 import connect, Row
 from pathlib import Path
-from datetime import datetime
 from threading import local
+from datetime import datetime
+from sqlite3 import connect, Row
 
 DB_PATH = Path.home() / ".claude" / "pipeline" / "pipeline.db"
 
 _threadLocal = local()
 
-PHASES = ["requirements", "spec", "tests", "implementation", "mutation", "done"]
+PHASES = ["requirements", "spec", "plan", "tests", "implementation", "mutation", "done"]
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS projects (
@@ -90,6 +90,34 @@ CREATE TABLE IF NOT EXISTS incidents (
     expectedBehavior TEXT,
     rootCause TEXT,
     rootCauseConfidence TEXT
+);
+
+CREATE TABLE IF NOT EXISTS planArtifacts (
+    id TEXT NOT NULL,
+    taskId TEXT NOT NULL REFERENCES tasks(id),
+    description TEXT,
+    approved INTEGER DEFAULT 0,
+    approvedAt TEXT,
+    createdAt TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (taskId, id)
+);
+
+CREATE TABLE IF NOT EXISTS planScope (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    taskId TEXT NOT NULL REFERENCES tasks(id),
+    planId TEXT NOT NULL,
+    filePath TEXT NOT NULL,
+    action TEXT NOT NULL,
+    components TEXT NOT NULL DEFAULT '[]'
+);
+
+CREATE TABLE IF NOT EXISTS planQualityScores (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    taskId TEXT NOT NULL REFERENCES tasks(id),
+    planId TEXT NOT NULL,
+    dimension TEXT NOT NULL,
+    score INTEGER NOT NULL,
+    justification TEXT
 );
 """
 
@@ -240,7 +268,7 @@ def _checkPhaseGates(task, toPhase):
         )
         results.append(("EARS aprovados", passed, detail))
 
-    if fromPhase == "spec" and toPhase == "tests":
+    if fromPhase == "spec" and toPhase == "plan":
         ears = listEars(taskId)
         criteria = listCriteria(taskId)
         approvedCriteria = [c for c in criteria if c["approved"]]
@@ -263,6 +291,12 @@ def _checkPhaseGates(task, toPhase):
             else "{0} critérios com testMethod".format(len(approvedCriteria))
         )
         results.append(("testMethod", passedMethod, detailMethod))
+
+    if fromPhase == "plan" and toPhase == "tests":
+        plan = getPlan(taskId)
+        passedPlan = plan is not None and bool(plan["approved"])
+        detailPlan = "plan aprovado" if passedPlan else "nenhum plan aprovado encontrado"
+        results.append(("Plan aprovado", passedPlan, detailPlan))
 
     if fromPhase == "tests" and toPhase == "implementation":
         criteria = listCriteria(taskId)
@@ -517,6 +551,111 @@ def updateIncident(taskId, **kwargs):
             "UPDATE incidents SET {0} WHERE taskId = ?".format(setClauses),
             list(updates.values()) + [taskId],
         )
+
+# --- Plan Artifacts ---
+
+import json as _json
+
+
+def nextPlanId(taskId):
+    with getConn() as conn:
+        row = conn.execute(
+            "SELECT id FROM planArtifacts WHERE taskId = ? ORDER BY id DESC LIMIT 1",
+            (taskId,),
+        ).fetchone()
+        if not row:
+            return "P01"
+        n = int(row["id"][1:])
+        return "P{0:02d}".format(n + 1)
+
+
+def createPlan(taskId, description=None):
+    planId = nextPlanId(taskId)
+    with getConn() as conn:
+        conn.execute(
+            "INSERT INTO planArtifacts (id, taskId, description) VALUES (?, ?, ?)",
+            (planId, taskId, description),
+        )
+    return planId
+
+
+def approvePlan(taskId, planId):
+    with getConn() as conn:
+        conn.execute(
+            "UPDATE planArtifacts SET approved = 1, approvedAt = datetime('now') WHERE taskId = ? AND id = ?",
+            (taskId, planId),
+        )
+
+
+def getPlan(taskId):
+    with getConn() as conn:
+        row = conn.execute(
+            "SELECT * FROM planArtifacts WHERE taskId = ? ORDER BY id DESC LIMIT 1",
+            (taskId,),
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def addPlanFile(taskId, planId, filePath, action, components):
+    with getConn() as conn:
+        conn.execute(
+            "INSERT INTO planScope (taskId, planId, filePath, action, components) VALUES (?, ?, ?, ?, ?)",
+            (taskId, planId, filePath, action, _json.dumps(components)),
+        )
+
+
+def getPlanScope(taskId, planId):
+    with getConn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM planScope WHERE taskId = ? AND planId = ? ORDER BY id",
+            (taskId, planId),
+        ).fetchall()
+    result = []
+    for row in rows:
+        entry = dict(row)
+        entry["components"] = _json.loads(entry["components"])
+        result.append(entry)
+    return result
+
+
+def addPlanQualityScore(taskId, planId, dimension, score, justification=None):
+    with getConn() as conn:
+        conn.execute(
+            "INSERT INTO planQualityScores (taskId, planId, dimension, score, justification) VALUES (?, ?, ?, ?, ?)",
+            (taskId, planId, dimension, score, justification),
+        )
+
+
+def getPlanQualityScores(taskId, planId):
+    with getConn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM planQualityScores WHERE taskId = ? AND planId = ? ORDER BY id",
+            (taskId, planId),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+def getLowQualityScores(taskId, planId, threshold=4):
+    with getConn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM planQualityScores WHERE taskId = ? AND planId = ? AND score < ? ORDER BY id",
+            (taskId, planId, threshold),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+def compareScopeVsImplemented(taskId, planId, implementedComponents):
+    scope = getPlanScope(taskId, planId)
+    plannedComponents = []
+    for entry in scope:
+        plannedComponents.extend(entry["components"])
+    implementedSet = set(implementedComponents)
+    plannedSet = set(plannedComponents)
+    return {
+        "missingFromImpl": sorted(plannedSet - implementedSet),
+        "notInPlan": sorted(implementedSet - plannedSet),
+    }
+
 
 # --- Audit ---
 

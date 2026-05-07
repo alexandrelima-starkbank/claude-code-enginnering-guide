@@ -2,8 +2,8 @@ import os
 import sys
 import tempfile
 from pathlib import Path
-from unittest import TestCase, main
 from unittest.mock import patch
+from unittest import TestCase, main
 
 PROJECT_ROOT = os.path.join(os.path.dirname(__file__), "..")
 sys.path.insert(0, os.path.join(PROJECT_ROOT, "pipeline-cli"))
@@ -258,6 +258,9 @@ class PhaseAdvanceTest(TestCase):
             db.initDb()
             taskId = self._createTask()
             db.advancePhase(taskId, "spec")
+            db.advancePhase(taskId, "plan")
+            planId = db.createPlan(taskId, "test plan")
+            db.approvePlan(taskId, planId)
             db.advancePhase(taskId, "tests")
             db.addCriterion(taskId, "R01", "scenario", "then text",
                             testMethod="testSomething")
@@ -270,13 +273,16 @@ class PhaseAdvanceTest(TestCase):
             task = db.getTask(taskId)
             self.assertEqual(task["phase"], "done")
             history = db.getPhaseHistory(taskId)
-            self.assertEqual(len(history), 6)
+            self.assertEqual(len(history), 7)
 
     def testAdvancePhase_TestsToImplementation_RequiresTestQuality(self):
         with useTempDb():
             db.initDb()
             taskId = self._createTask()
             db.advancePhase(taskId, "spec")
+            db.advancePhase(taskId, "plan")
+            planId = db.createPlan(taskId, "test plan")
+            db.approvePlan(taskId, planId)
             db.advancePhase(taskId, "tests")
             db.addCriterion(taskId, "R01", "scenario", "then text",
                             testMethod="testSomething")
@@ -289,6 +295,9 @@ class PhaseAdvanceTest(TestCase):
             db.initDb()
             taskId = self._createTask()
             db.advancePhase(taskId, "spec")
+            db.advancePhase(taskId, "plan")
+            planId = db.createPlan(taskId, "test plan")
+            db.approvePlan(taskId, planId)
             db.advancePhase(taskId, "tests")
             db.addCriterion(taskId, "R01", "scenario", "then text",
                             testMethod="testSomething")
