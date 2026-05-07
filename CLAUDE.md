@@ -84,19 +84,34 @@ do protocolo. O comportamento esperado deve ser confirmado antes de qualquer imp
 
 ### 2. Consultar contexto antes de perguntar
 
-Antes da entrevista, verificar o banco semântico em paralelo:
+**Quando buscar:** intents `feature`, `bug`, `refactor` e `incident` — sempre que a
+mensagem do engenheiro contiver entidades de domínio ou termos técnicos identificáveis.
+Para `question`, `investigation` e `admin`: pular esta etapa.
+
+**Como montar a query:** extrair da mensagem (1) a entidade de domínio principal,
+(2) o tipo de operação (`criar`, `atualizar`, `deletar`, `validar`, `corrigir`),
+(3) o componente afetado se identificável. Combinar em 3–8 palavras.
+
+Exemplos:
+- "preciso adicionar campo de validade no cartão" → `"cartão validade campo criação"`
+- "o cálculo de fatura está errado" → `"fatura cálculo correção bug"`
+- "refatorar a lógica de autorização" → `"autorização lógica refactor"`
 
 ```bash
 # Decisões arquiteturais e requisitos anteriores
-pipeline context search "<resumo da solicitação>"
+pipeline context search "<entidade> <operação> <componente>"
 
-# Código-fonte relevante (para feature, bug, investigation, refactor)
-pipeline search "<termos-chave do problema ou feature>" --n 8
+# Código-fonte relevante (para feature, bug, refactor)
+pipeline search "<termos-chave>" --n 8
 ```
 
 Se encontrar decisões arquiteturais, requisitos similares ou código diretamente
-relacionado: apresentar ao engenheiro antes de perguntar — pode eliminar ambiguidades
-sem precisar de entrevista. Se ChromaDB não estiver disponível: prosseguir para entrevista.
+relacionado: apresentar ao engenheiro **antes de perguntar**, rotulado como
+"Contexto relevante" — pode eliminar ambiguidades sem entrevista.
+
+Se `pipeline context search` não estiver disponível ou retornar erro: exibir
+`AVISO: busca semântica indisponível — prosseguindo sem contexto histórico`
+e continuar com a entrevista normalmente.
 
 ### 3. Entrevistar até artefato satisfatório
 
