@@ -1,7 +1,8 @@
+import os
 import sys
-import click
 from json import dumps
 from pathlib import Path
+import click
 
 _origParseDecls = click.core.Argument._parse_decls
 def _patchedParseDecls(self, *args):
@@ -17,16 +18,19 @@ from .db import (
     createTask, getTask, listTasks, updateTask,
     advancePhase, checkPhaseGates, getPhaseHistory, PHASES,
     addEars, listEars, approveEars, approveAllEars,
+    addEarsQualityScores, getEarsQualityScores,
     addCriterion, listCriteria, approveCriterion, approveAllCriteria,
     setTestQuality,
     recordTest, getTestSummary,
     recordMutation, getLatestMutation,
     createIncident, updateIncident,
     getTaskAudit,
+    getPlan, getPlanScope,
 )
 from .export import generateTasksMd, formatTask
 from . import vector
 from .indexer import indexDirectory, generateContextSection, indexFile, indexProject
+from .llm import evaluateQuality
 
 
 def autoRegenTasksMd():
@@ -159,6 +163,8 @@ def phase():
 @click.option("--to", "toPhase", required=True, type=click.Choice(PHASES))
 @click.option("--reason", default=None)
 def phaseAdvance(taskId, toPhase, reason):
+    if toPhase == "tests":
+        _printBlastRadiusAdvisory(taskId)
     try:
         advancePhase(taskId, toPhase, reason)
         click.echo("{0} → fase: {1}".format(taskId, toPhase))
@@ -166,6 +172,24 @@ def phaseAdvance(taskId, toPhase, reason):
     except ValueError as e:
         click.echo("ERRO: {0}".format(e), err=True)
         sys.exit(1)
+
+
+def _printBlastRadiusAdvisory(taskId):
+    try:
+        plan = getPlan(taskId)
+        if not plan or not plan.get("approved"):
+            return
+        scope = getPlanScope(taskId, plan["id"])
+        if not scope:
+            return
+        files = [entry["filePath"] for entry in scope]
+        click.echo("BLAST-RADIUS ADVISORY (non-blocking):")
+        click.echo("  Invoke /blast-radius on the following plan scope before committing to this implementation:")
+        for f in files:
+            click.echo("    - {0}".format(f))
+        click.echo("")
+    except Exception:
+        click.echo("AVISO: blast-radius advisory indisponível — prosseguindo normalmente.")
 
 
 @phase.command("check")
@@ -249,6 +273,62 @@ def earsApprove(taskId, reqId):
     approveEars(taskId, reqId)
     click.echo("{0} aprovado.".format(reqId))
     autoRegenTasksMd()
+
+
+_SCORE_DIMENSIONS = [
+    "Ambiguidade",
+    "Ausencia de criterios de aceite",
+    "Casos de uso bem definidos",
+    "Cobertura de criterios de aceite",
+    "Conflitos de decisao",
+    "Impacto",
+    "Risco",
+    "Subjetividade",
+]
+
+
+@ears.command("score")
+@click.argument("taskId")
+def earsScore(taskId):
+    apiKey = os.environ.get("ANTHROPIC_API_KEY")
+    if not apiKey:
+        click.echo("AVISO: ANTHROPIC_API_KEY não configurada — scoring ignorado.")
+        return
+    reqs = listEars(taskId)
+    approved = [r for r in reqs if r["approved"]]
+    if not approved:
+        click.echo("Nenhum EARS aprovado para {0}.".format(taskId))
+        return
+    for r in approved:
+        scores = evaluateQuality([r["text"]], _SCORE_DIMENSIONS)
+        if not scores:
+            click.echo("AVISO: falha ao avaliar {0} — scoring abortado.".format(r["id"]))
+            return
+        addEarsQualityScores(taskId, scores, earsId=r["id"], scope="individual")
+        click.echo("\n{0} — Score individual:".format(r["id"]))
+        for s in sorted(scores, key=lambda x: x["dimension"]):
+            flag = "  ⚠ LOW SCORE" if s["score"] < 4 else ""
+            click.echo("  {dim}: {score}/10{flag}  {just}".format(
+                dim=s["dimension"],
+                score=s["score"],
+                flag=flag,
+                just=s.get("justification", ""),
+            ))
+    allTexts = [r["text"] for r in approved]
+    aggScores = evaluateQuality(allTexts, _SCORE_DIMENSIONS)
+    if not aggScores:
+        click.echo("AVISO: falha ao avaliar conjunto — scoring agregado ignorado.")
+        return
+    addEarsQualityScores(taskId, aggScores, earsId=None, scope="aggregate")
+    click.echo("\nScore agregado (todos os EARS):")
+    for s in sorted(aggScores, key=lambda x: x["dimension"]):
+        flag = "  ⚠ LOW SCORE" if s["score"] < 4 else ""
+        click.echo("  {dim}: {score}/10{flag}  {just}".format(
+            dim=s["dimension"],
+            score=s["score"],
+            flag=flag,
+            just=s.get("justification", ""),
+        ))
 
 
 # ─── CRITERION ────────────────────────────────────────────────────────────────

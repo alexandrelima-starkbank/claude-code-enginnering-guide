@@ -73,13 +73,18 @@ flowchart LR
         H6[validate-requirements]
     end
 
+    subgraph "PreToolUse (Edit/Write)"
+        H7b[check-scope]
+    end
+
     subgraph "PreToolUse (Bash)"
         H7[validate-destructive]
         H8[pre-commit-gate]
     end
 
     subgraph "PostToolUse (Edit/Write)"
-        H9[check-bash-syntax]
+        H9[sort-imports-on-edit]
+        H9b[check-bash-syntax]
         H10[check-python-style]
     end
 
@@ -96,17 +101,18 @@ flowchart LR
     SessionStart --> PROMPT((Prompt))
     PROMPT --> UserPromptSubmit
     UserPromptSubmit --> TOOL((Tool))
+    TOOL -->|Edit/Write| H7b
     TOOL -->|Bash| H7
-    TOOL -->|Edit/Write| H9
-    H7 --> EXEC((Execução))
-    H9 --> EXEC
+    H7b --> EXEC((Execução))
+    H7 --> EXEC
+    EXEC -->|Edit/Write| H9
     EXEC -->|Bash| H11
-    EXEC -->|Edit/Write| H10
     H11 --> FIM((Stop))
     FIM --> Stop
 
     style H4 fill:#f96,stroke:#333
     style H7 fill:#f96,stroke:#333
+    style H7b fill:#f96,stroke:#333
     style H8 fill:#f96,stroke:#333
 ```
 
@@ -120,19 +126,22 @@ flowchart LR
 flowchart LR
     REQ[requirements]
     SPEC[spec]
+    PLAN[plan]
     TESTS[tests]
     IMPL[implementation]
     MUT[mutation]
     DONE[done]
 
-    REQ -->|"EARS aprovados"| SPEC
-    SPEC -->|"critérios aprovados\ntestMethods mapeados"| TESTS
+    REQ -->|"EARS aprovados\nquality scores"| SPEC
+    SPEC -->|"critérios aprovados\ntestMethods mapeados"| PLAN
+    PLAN -->|"plan aprovado\nblast-radius advisory"| TESTS
     TESTS -->|"qualidade ACCEPTABLE+\ntestes executados"| IMPL
     IMPL -->|"todos os testes passando"| MUT
     MUT -->|"score = 100%"| DONE
 
     REQ -.->|"👤 Engenheiro aprova"| SPEC
-    SPEC -.->|"👤 Engenheiro aprova"| TESTS
+    SPEC -.->|"👤 Engenheiro aprova"| PLAN
+    PLAN -.->|"👤 Engenheiro aprova"| TESTS
     MUT -.->|"👤 Decide equivalentes"| DONE
 ```
 
@@ -206,19 +215,25 @@ sequenceDiagram
     C->>E: Cenários BDD para aprovação
     E->>C: ✓ Aprovado
     C->>DB: pipeline criterion approve T1 all
-    C->>DB: pipeline phase advance T1 --to tests
+    C->>DB: pipeline phase advance T1 --to plan
 
-    Note over C: Fase 2 — Tests
+    Note over C: Fase 2 — Plan
+    C->>E: Plano técnico (arquivos e componentes)
+    E->>C: ✓ Aprovado
+    C->>DB: pipeline phase advance T1 --to tests
+    Note over C: blast-radius advisory exibido
+
+    Note over C: Fase 3 — Tests
     C->>T: Escreve testes (devem falhar)
     T-->>DB: Hook auto-registra resultados
     C->>DB: pipeline phase advance T1 --to implementation
 
-    Note over C: Fase 3 — Implementation
+    Note over C: Fase 4 — Implementation
     C->>T: Implementa código mínimo
     T-->>DB: Hook auto-registra (todos passam)
     C->>DB: pipeline phase advance T1 --to mutation
 
-    Note over C: Fase 4 — Mutation
+    Note over C: Fase 5 — Mutation
     C->>T: mutmut run
     T-->>DB: Hook auto-registra score
     C->>E: Score 100% — 8/8 mutantes mortos
@@ -284,7 +299,12 @@ erDiagram
     tasks ||--o{ mutationResults : records
     tasks ||--o{ phaseTransitions : tracks
     tasks ||--o| incidents : may_have
+    tasks ||--o{ planArtifacts : has
+    tasks ||--o{ earsQualityScores : has
     earsRequirements ||--o{ acceptanceCriteria : traces_to
+    earsRequirements ||--o{ earsQualityScores : scored_by
+    planArtifacts ||--o{ planScope : defines
+    planArtifacts ||--o{ planQualityScores : scored_by
 
     projects {
         text id PK
@@ -332,6 +352,40 @@ erDiagram
         int totalMutants
         int killed
         real score
+    }
+
+    planArtifacts {
+        text id PK
+        text taskId FK
+        text description
+        int approved
+    }
+
+    planScope {
+        int id PK
+        text taskId FK
+        text planId FK
+        text filePath
+        text action
+        text components
+    }
+
+    planQualityScores {
+        int id PK
+        text taskId FK
+        text planId FK
+        text dimension
+        int score
+        text justification
+    }
+
+    earsQualityScores {
+        int id PK
+        text taskId FK
+        text earsId FK
+        text dimension
+        int score
+        text justification
     }
 ```
 

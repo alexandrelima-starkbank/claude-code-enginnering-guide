@@ -1,12 +1,28 @@
 import os
 import sys
+import tempfile
+from pathlib import Path
 from unittest import TestCase
+from contextlib import contextmanager
 from unittest.mock import patch, MagicMock
 
 PROJECT_ROOT = os.path.join(os.path.dirname(__file__), "..")
 sys.path.insert(0, os.path.join(PROJECT_ROOT, "pipeline-cli"))
 
+from pipeline import db
 from pipeline.llm import evaluateQuality
+
+
+@contextmanager
+def useTempDb():
+    tmpDir = tempfile.mkdtemp()
+    tmpPath = Path(tmpDir) / "test_pipeline.db"
+    db.closeConn()
+    with patch.object(db, "DB_PATH", tmpPath):
+        try:
+            yield
+        finally:
+            db.closeConn()
 
 REQUIRED_DIMENSIONS = [
     "Risco",
@@ -131,3 +147,101 @@ class EvaluateQualityTest(TestCase):
 
         # Assert
         self.assertEqual(result, [])
+
+
+class EarsScoreCommandTest(TestCase):
+
+    def _setupTask(self):
+        db.ensureProject("proj")
+        taskId = db.createTask("proj", "Test task")
+        earsId = db.addEars(taskId, "event", "WHEN user does X THEN system SHALL do Y")
+        db.approveEars(taskId, earsId)
+        return taskId, earsId
+
+    def _makeFakeScores(self):
+        from pipeline.cli import _SCORE_DIMENSIONS
+        return [{"dimension": d, "score": 8, "justification": "ok"} for d in _SCORE_DIMENSIONS]
+
+    def _makeFakeResponse(self, scores):
+        import json
+        content = json.dumps({"dimensions": scores})
+        msg = MagicMock()
+        msg.content = [MagicMock(text=content)]
+        return msg
+
+    def testEarsScore_NoApiKey_PrintsWarningAndSkips(self):
+        # Arrange / Act
+        with useTempDb():
+            db.initDb()
+            taskId, _ = self._setupTask()
+            with patch.dict(os.environ, {}, clear=True):
+                os.environ.pop("ANTHROPIC_API_KEY", None)
+                from click.testing import CliRunner
+                from pipeline.cli import cli
+                runner = CliRunner()
+                result = runner.invoke(cli, ["ears", "score", taskId])
+
+        # Assert
+        self.assertEqual(result.exit_code, 0)
+        self.assertIn("AVISO", result.output)
+        self.assertIn("ANTHROPIC_API_KEY", result.output)
+
+    def testEarsScore_EvaluateQualityFails_PrintsWarningAndAborts(self):
+        # Arrange
+        with useTempDb():
+            db.initDb()
+            taskId, _ = self._setupTask()
+            with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
+                with patch("pipeline.cli.evaluateQuality", return_value=[]):
+                    from click.testing import CliRunner
+                    from pipeline.cli import cli
+                    runner = CliRunner()
+
+                    # Act
+                    result = runner.invoke(cli, ["ears", "score", taskId])
+
+        # Assert
+        self.assertEqual(result.exit_code, 0)
+        self.assertIn("AVISO", result.output)
+        scores = db.getEarsQualityScores(taskId)
+        self.assertEqual(scores, [])
+
+    def testEarsScore_Success_PersistsIndividualAndAggregateScores(self):
+        # Arrange
+        with useTempDb():
+            db.initDb()
+            taskId, earsId = self._setupTask()
+            fakeScores = self._makeFakeScores()
+            with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
+                with patch("pipeline.cli.evaluateQuality", return_value=fakeScores):
+                    from click.testing import CliRunner
+                    from pipeline.cli import cli
+                    runner = CliRunner()
+
+                    # Act
+                    result = runner.invoke(cli, ["ears", "score", taskId])
+
+            # Assert
+            self.assertEqual(result.exit_code, 0)
+            individual = db.getEarsQualityScores(taskId, earsId=earsId, scope="individual")
+            aggregate = db.getEarsQualityScores(taskId, scope="aggregate")
+            self.assertGreater(len(individual), 0)
+            self.assertGreater(len(aggregate), 0)
+
+    def testEarsScore_LowScore_FlaggedInOutput(self):
+        # Arrange
+        with useTempDb():
+            db.initDb()
+            taskId, _ = self._setupTask()
+            lowScores = [{"dimension": "Ambiguidade", "score": 2, "justification": "vague"}]
+            with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
+                with patch("pipeline.cli.evaluateQuality", side_effect=[lowScores, lowScores]):
+                    from click.testing import CliRunner
+                    from pipeline.cli import cli
+                    runner = CliRunner()
+
+                    # Act
+                    result = runner.invoke(cli, ["ears", "score", taskId])
+
+        # Assert
+        self.assertIn("LOW SCORE", result.output)

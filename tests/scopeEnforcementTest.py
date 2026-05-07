@@ -60,6 +60,7 @@ class ScopeHookTest(TestCase):
         db.updateTask(taskId, status="em andamento")
         earsId = db.addEars(taskId, "event", "System SHALL do X")
         db.approveEars(taskId, earsId)
+        db.addEarsQualityScores(taskId, [{"dimension": "Risco", "score": 8, "justification": "ok"}], earsId=earsId)
         db.advancePhase(taskId, "spec")
         cId = db.addCriterion(taskId, earsId, "Happy path", "item created", testMethod="testCreate_Valid")
         db.approveCriterion(taskId, cId)
@@ -131,6 +132,7 @@ class ScopeComparisonTest(TestCase):
     def _advanceToPlan(self, taskId):
         earsId = db.addEars(taskId, "event", "System SHALL do X")
         db.approveEars(taskId, earsId)
+        db.addEarsQualityScores(taskId, [{"dimension": "Risco", "score": 8, "justification": "ok"}], earsId=earsId)
         db.advancePhase(taskId, "spec")
         cId = db.addCriterion(taskId, earsId, "Happy path", "item created", testMethod="testCreate_Valid")
         db.approveCriterion(taskId, cId)

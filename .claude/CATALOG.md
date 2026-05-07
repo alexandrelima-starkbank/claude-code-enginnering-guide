@@ -18,8 +18,8 @@ Protocolo completo: `CLAUDE.md → Intake Protocol`
 
 | Entry point | Quando usar | Precisa de | Produz |
 |---|---|---|---|
-| `/requirements` | Problema em linguagem natural, sem requisitos formalizados | Descrição do problema | Requisitos EARS gravados no DB + fase avançada para spec |
-| `/spec` | EARS aprovados no DB, falta critério de aceite | Task com EARS aprovados | Cenários Given/When/Then gravados no DB + fase avançada para tests |
+| `/requirements` | Problema em linguagem natural, sem requisitos formalizados | Descrição do problema | Requisitos EARS gravados no DB + quality scores + fase avançada para spec |
+| `/spec` | EARS aprovados no DB, falta critério de aceite | Task com EARS aprovados | Cenários Given/When/Then gravados no DB + fase avançada para plan |
 | `/pipeline-audit` | Verificar estado completo de uma tarefa | Task ID | PASS/FAIL por gate + rastreabilidade + métricas |
 
 ---
@@ -30,7 +30,7 @@ Protocolo completo: `CLAUDE.md → Intake Protocol`
 |---|---|---|---|
 | `/feature` | Feature nova do zero, sem requisitos definidos | Descrição da feature | EARS + spec + testes + código implementado |
 | `/tdd` | Spec aprovada em TASKS.md, implementação não iniciada | Spec em TASKS.md | Código testado com mutation score 100% |
-| `/verify-delivery` | Antes de qualquer merge ou declaração de conclusão | Mudanças locais | Checklist READY / NOT READY |
+| `/verify-delivery` | Antes de qualquer merge ou declaração de conclusão | Mudanças locais | Checklist READY / NOT READY (inclui security-review em paralelo) |
 
 ---
 
@@ -89,4 +89,4 @@ Quatro mecanismos complementares — escolha pelo tipo de pergunta:
 | `test-runner` | `/verify-delivery` — em paralelo com `code-reviewer` | Executa suite e reporta falhas de forma concisa |
 | `service-impact-analyzer` | `/blast-radius` — N instâncias em paralelo, uma por serviço | Varre um serviço e retorna bloco estruturado de impacto |
 | `test-reviewer` | Antes de concluir qualquer tarefa | Avalia qualidade de assertions: WEAK / ACCEPTABLE / STRONG |
-| `tasks-maintainer` | Final de sessão ou conclusão de tarefa | Atualiza TASKS.md e move concluídos para HISTORY_TASKS.md |
+| `tasks-maintainer` | Final de sessão (Stop hook) ou conclusão de tarefa | Atualiza TASKS.md e move concluídos para HISTORY_TASKS.md |
