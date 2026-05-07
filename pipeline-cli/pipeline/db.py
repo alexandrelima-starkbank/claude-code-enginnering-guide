@@ -119,6 +119,17 @@ CREATE TABLE IF NOT EXISTS planQualityScores (
     score INTEGER NOT NULL,
     justification TEXT
 );
+
+CREATE TABLE IF NOT EXISTS earsQualityScores (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    taskId TEXT NOT NULL REFERENCES tasks(id),
+    earsId TEXT,
+    scope TEXT NOT NULL DEFAULT 'individual',
+    dimension TEXT NOT NULL,
+    score INTEGER NOT NULL,
+    justification TEXT,
+    createdAt TEXT DEFAULT (datetime('now'))
+);
 """
 
 def getConn():
@@ -655,6 +666,30 @@ def compareScopeVsImplemented(taskId, planId, implementedComponents):
         "missingFromImpl": sorted(plannedSet - implementedSet),
         "notInPlan": sorted(implementedSet - plannedSet),
     }
+
+
+def addEarsQualityScores(taskId, scores, earsId=None, scope="individual"):
+    conn = getConn()
+    for entry in scores:
+        conn.execute(
+            "INSERT INTO earsQualityScores (taskId, earsId, scope, dimension, score, justification) VALUES (?, ?, ?, ?, ?, ?)",
+            (taskId, earsId, scope, entry["dimension"], entry["score"], entry.get("justification", "")),
+        )
+    conn.commit()
+
+
+def getEarsQualityScores(taskId, earsId=None, scope=None):
+    conn = getConn()
+    query = "SELECT * FROM earsQualityScores WHERE taskId = ?"
+    params = [taskId]
+    if earsId is not None:
+        query += " AND earsId = ?"
+        params.append(earsId)
+    if scope is not None:
+        query += " AND scope = ?"
+        params.append(scope)
+    rows = conn.execute(query, params).fetchall()
+    return [dict(r) for r in rows]
 
 
 # --- Audit ---
