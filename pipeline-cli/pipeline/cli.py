@@ -25,6 +25,7 @@ from .db import (
     recordMutation, getLatestMutation,
     createIncident, updateIncident,
     getTaskAudit,
+    getPlan, getPlanScope,
 )
 from .export import generateTasksMd, formatTask
 from . import vector
@@ -162,6 +163,8 @@ def phase():
 @click.option("--to", "toPhase", required=True, type=click.Choice(PHASES))
 @click.option("--reason", default=None)
 def phaseAdvance(taskId, toPhase, reason):
+    if toPhase == "tests":
+        _printBlastRadiusAdvisory(taskId)
     try:
         advancePhase(taskId, toPhase, reason)
         click.echo("{0} → fase: {1}".format(taskId, toPhase))
@@ -169,6 +172,24 @@ def phaseAdvance(taskId, toPhase, reason):
     except ValueError as e:
         click.echo("ERRO: {0}".format(e), err=True)
         sys.exit(1)
+
+
+def _printBlastRadiusAdvisory(taskId):
+    try:
+        plan = getPlan(taskId)
+        if not plan or not plan.get("approved"):
+            return
+        scope = getPlanScope(taskId, plan["id"])
+        if not scope:
+            return
+        files = [entry["filePath"] for entry in scope]
+        click.echo("BLAST-RADIUS ADVISORY (non-blocking):")
+        click.echo("  Invoke /blast-radius on the following plan scope before committing to this implementation:")
+        for f in files:
+            click.echo("    - {0}".format(f))
+        click.echo("")
+    except Exception:
+        click.echo("AVISO: blast-radius advisory indisponível — prosseguindo normalmente.")
 
 
 @phase.command("check")

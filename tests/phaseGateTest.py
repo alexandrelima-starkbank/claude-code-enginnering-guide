@@ -283,3 +283,49 @@ class PhaseGateTest(TestCase):
 
             self.assertEqual(result.exit_code, 2)
             self.assertIn("no such option", result.output.lower())
+
+    # ── T84: blast-radius advisory on phase advance → tests ───────────────────
+
+    def testPhaseAdvanceToTests_InvokesBlastRadius(self):
+        # Critério: advisory exibido com arquivos do scope quando avança para tests
+        with useTempDb():
+            db.initDb()
+            taskId = self._setup()
+            earsId = self._advanceToSpec(taskId)
+            self._addApprovedCriterion(taskId, earsId, testMethod="testSomething")
+            db.advancePhase(taskId, "plan")
+            planId = db.createPlan(taskId, "test plan")
+            db.addPlanFile(taskId, planId, "handlers/itemHandler.py", "modify", ["createItem"])
+            db.approvePlan(taskId, planId)
+
+            from click.testing import CliRunner
+            from pipeline.cli import cli
+            runner = CliRunner()
+            result = runner.invoke(cli, ["phase", "advance", taskId, "--to", "tests"])
+
+            self.assertEqual(result.exit_code, 0)
+            self.assertIn("BLAST-RADIUS ADVISORY", result.output)
+            self.assertIn("handlers/itemHandler.py", result.output)
+            self.assertIn("fase: tests", result.output)
+
+    def testPhaseAdvanceToTests_BlastRadiusFailure_WarnsAndAdvances(self):
+        # Critério: se getPlan lança exceção, aviso é emitido e phase ainda avança
+        with useTempDb():
+            db.initDb()
+            taskId = self._setup()
+            earsId = self._advanceToSpec(taskId)
+            self._addApprovedCriterion(taskId, earsId, testMethod="testSomething")
+            db.advancePhase(taskId, "plan")
+            planId = db.createPlan(taskId, "test plan")
+            db.approvePlan(taskId, planId)
+
+            from click.testing import CliRunner
+            from pipeline.cli import cli
+            from unittest.mock import patch as mockPatch
+            runner = CliRunner()
+            with mockPatch("pipeline.cli.getPlan", side_effect=Exception("db error")):
+                result = runner.invoke(cli, ["phase", "advance", taskId, "--to", "tests"])
+
+            self.assertEqual(result.exit_code, 0)
+            self.assertIn("AVISO", result.output)
+            self.assertIn("fase: tests", result.output)
