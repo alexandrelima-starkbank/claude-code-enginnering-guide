@@ -1,6 +1,6 @@
 ---
 name: verify-delivery
-description: Checklist pré-merge completo — convenções, estrutura, testes e git hygiene. Use após qualquer implementação, antes de commitar ou declarar a tarefa concluída.
+description: Checklist pré-merge completo — convenções, estrutura, testes, segurança e git hygiene. Use após qualquer implementação, antes de commitar ou declarar a tarefa concluída.
 ---
 
 # Verify Delivery
@@ -86,7 +86,23 @@ Pular este passo se cobertura não estiver configurada.
 
 ---
 
-## Passo 6 — Git hygiene
+## Passo 6 — Security review (paralelo)
+
+Invocar o agente `security-review` em paralelo com os agentes `code-reviewer` e `test-runner` do Passo 4.
+Não aguardar o resultado do security-review para iniciar os outros agentes.
+
+Interpretar o resultado:
+
+| Resultado | Ação |
+|-----------|------|
+| Nenhum finding | SECURITY: PASS |
+| Somente MEDIUM e/ou LOW | SECURITY: lista os findings — não bloqueia o VERDICT |
+| Pelo menos um HIGH | SECURITY: lista os findings — VERDICT obrigatoriamente NOT READY |
+| Agente falha ou não responde | SECURITY: SKIPPED — não bloqueia o VERDICT |
+
+---
+
+## Passo 7 — Git hygiene
 
 - Mensagem de commit: verbo imperativo, capitalizado, sem ponto final, sem emoji, sem `Co-Authored-By`
 - Nenhum arquivo proibido: `main_local.py`, `query_dev.py`, `test_local.sh`, `it_tests/`
@@ -113,6 +129,10 @@ TESTS:
   Suite: PASS | FAIL — X passed, Y failed
   New tests added: yes | no
 
+SECURITY:
+  Findings: PASS | N HIGH, M MEDIUM, K LOW | SKIPPED
+  Details: <lista de findings HIGH se houver>
+
 GIT:
   Commit message: PASS | FAIL
   Forbidden files: PASS | FAIL
@@ -120,4 +140,4 @@ GIT:
 VERDICT: READY | NOT READY
 ```
 
-Nunca reportar `READY` se qualquer check estiver `FAIL`.
+Nunca reportar `READY` se qualquer check estiver `FAIL` ou se SECURITY tiver pelo menos um HIGH finding.
