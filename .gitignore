@@ -21,3 +21,7 @@ config/__pycache__/
 # pipeline (auto-gerado pelo banco)
 TASKS.md
 HISTORY_TASKS.md
+__pycache__/
+*.pyc
+*.egg-info/
+mutants/
