@@ -1,4 +1,7 @@
+import os
 import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "pipeline-cli"))
 
 mainModule = sys.modules.get("__main__")
 mainFile = getattr(mainModule, "__file__", "") or ""

@@ -130,18 +130,22 @@ flowchart LR
     TESTS[tests]
     IMPL[implementation]
     MUT[mutation]
+    SA[static-analysis]
     DONE[done]
 
     REQ -->|"EARS aprovados\nquality scores"| SPEC
-    SPEC -->|"critérios aprovados\ntestMethods mapeados"| PLAN
+    SPEC -->|"critérios aprovados\ntestMethods mapeados\nadversarial-reviewer libera"| PLAN
     PLAN -->|"plan aprovado\nblast-radius advisory"| TESTS
-    TESTS -->|"qualidade ACCEPTABLE+\ntestes executados"| IMPL
-    IMPL -->|"todos os testes passando"| MUT
-    MUT -->|"score = 100%"| DONE
+    TESTS -->|"qualidade ACCEPTABLE+\ntestes executados\nadversarial-reviewer libera"| IMPL
+    IMPL -->|"todos os testes passando\nadversarial-reviewer libera"| MUT
+    MUT -->|"score = 100%\nauto-invoca análise estática"| SA
+    SA -->|"ruff/bandit/vulture/pylint = 0\nCC ≤ 10, MI ≥ 36"| DONE
 
     REQ -.->|"👤 Engenheiro aprova"| SPEC
-    SPEC -.->|"👤 Engenheiro aprova"| PLAN
+    SPEC -.->|"👤 Engenheiro aprova\n+ resolve decisões"| PLAN
     PLAN -.->|"👤 Engenheiro aprova"| TESTS
+    TESTS -.->|"👤 Resolve decisões"| IMPL
+    IMPL -.->|"👤 Resolve decisões"| MUT
     MUT -.->|"👤 Decide equivalentes"| DONE
 ```
 
@@ -301,6 +305,8 @@ erDiagram
     tasks ||--o| incidents : may_have
     tasks ||--o{ planArtifacts : has
     tasks ||--o{ earsQualityScores : has
+    tasks ||--o{ decisionPoints : has
+    tasks ||--o{ staticAnalysisResults : has
     earsRequirements ||--o{ acceptanceCriteria : traces_to
     earsRequirements ||--o{ earsQualityScores : scored_by
     planArtifacts ||--o{ planScope : defines
@@ -386,6 +392,29 @@ erDiagram
         text dimension
         int score
         text justification
+    }
+
+    decisionPoints {
+        int id PK
+        text taskId FK
+        text pointId
+        text gate
+        text context
+        text optionsJson
+        text status
+        text choice
+        text rationale
+    }
+
+    staticAnalysisResults {
+        int id PK
+        text taskId FK
+        text tool
+        text metric
+        real value
+        real threshold
+        int passed
+        text detailsJson
     }
 ```
 

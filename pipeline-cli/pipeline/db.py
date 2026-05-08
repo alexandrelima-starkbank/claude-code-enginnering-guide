@@ -7,7 +7,7 @@ DB_PATH = Path.home() / ".claude" / "pipeline" / "pipeline.db"
 
 _threadLocal = local()
 
-PHASES = ["requirements", "spec", "plan", "tests", "implementation", "mutation", "done"]
+PHASES = ["requirements", "spec", "plan", "tests", "implementation", "mutation", "static-analysis", "done"]
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS projects (
@@ -118,6 +118,32 @@ CREATE TABLE IF NOT EXISTS planQualityScores (
     dimension TEXT NOT NULL,
     score INTEGER NOT NULL,
     justification TEXT
+);
+
+CREATE TABLE IF NOT EXISTS staticAnalysisResults (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    taskId TEXT NOT NULL REFERENCES tasks(id),
+    tool TEXT NOT NULL,
+    metric TEXT NOT NULL,
+    value REAL NOT NULL,
+    threshold REAL NOT NULL,
+    passed INTEGER NOT NULL,
+    detailsJson TEXT NOT NULL DEFAULT '[]',
+    runAt TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS decisionPoints (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    taskId TEXT NOT NULL REFERENCES tasks(id),
+    pointId TEXT NOT NULL,
+    gate TEXT NOT NULL,
+    context TEXT NOT NULL,
+    optionsJson TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    choice TEXT,
+    rationale TEXT,
+    createdAt TEXT DEFAULT (datetime('now')),
+    resolvedAt TEXT
 );
 
 CREATE TABLE IF NOT EXISTS earsQualityScores (
@@ -344,7 +370,7 @@ def _checkPhaseGates(task, toPhase):
         )
         results.append(("Testes passando", passedTests, detailTests))
 
-    if fromPhase == "mutation" and toPhase == "done":
+    if fromPhase == "mutation" and toPhase == "static-analysis":
         mutation = getLatestMutation(taskId)
         if mutation is None:
             results.append(("Mutation score", False, "nenhum resultado de mutação registrado"))
@@ -352,6 +378,17 @@ def _checkPhaseGates(task, toPhase):
             results.append(("Mutation score", False, "score {0:.0f}% — exigido 100%".format(mutation["score"])))
         if mutation is not None and mutation["score"] >= 100.0:
             results.append(("Mutation score", True, "100%"))
+
+    if fromPhase == "static-analysis" and toPhase == "done":
+        rows = getLatestStaticAnalysis(taskId)
+        requiredTools = {"ruff", "bandit", "vulture", "pylint", "radon_cc", "radon_mi"}
+        passingTools = {row["tool"] for row in rows if row["passed"]}
+        missing = requiredTools - passingTools
+        if missing:
+            results.append(("Static analysis", False,
+                "ferramentas sem run passando: {0}".format(", ".join(sorted(missing)))))
+        if not missing:
+            results.append(("Static analysis", True, "todas as ferramentas passaram"))
 
     return results
 
@@ -700,6 +737,130 @@ def getEarsQualityScores(taskId, earsId=None, scope=None):
         params.append(scope)
     rows = conn.execute(query, params).fetchall()
     return [dict(r) for r in rows]
+
+
+# --- Static Analysis Results ---
+
+
+def addStaticAnalysisResult(taskId, tool, metric, value, threshold, passed, details):
+    with getConn() as conn:
+        conn.execute(
+            "INSERT INTO staticAnalysisResults (taskId, tool, metric, value, threshold, passed, detailsJson) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (taskId, tool, metric, float(value), float(threshold), 1 if passed else 0,
+             _json.dumps(details, ensure_ascii=False)),
+        )
+
+
+def getStaticAnalysisResults(taskId):
+    with getConn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM staticAnalysisResults WHERE taskId = ? ORDER BY id",
+            (taskId,),
+        ).fetchall()
+    result = []
+    for row in rows:
+        entry = dict(row)
+        entry["details"] = _json.loads(entry["detailsJson"])
+        result.append(entry)
+    return result
+
+
+def getLatestStaticAnalysis(taskId):
+    with getConn() as conn:
+        rows = conn.execute(
+            """
+            SELECT * FROM staticAnalysisResults
+            WHERE taskId = ? AND id IN (
+                SELECT MAX(id) FROM staticAnalysisResults
+                WHERE taskId = ? GROUP BY tool
+            )
+            ORDER BY tool
+            """,
+            (taskId, taskId),
+        ).fetchall()
+    result = []
+    for row in rows:
+        entry = dict(row)
+        entry["details"] = _json.loads(entry["detailsJson"])
+        result.append(entry)
+    return result
+
+
+# --- Decision Points ---
+
+
+def nextDecisionPointId(taskId):
+    with getConn() as conn:
+        row = conn.execute(
+            "SELECT pointId FROM decisionPoints WHERE taskId = ? ORDER BY id DESC LIMIT 1",
+            (taskId,),
+        ).fetchone()
+        if not row:
+            return "D01"
+        n = int(row["pointId"][1:])
+        return "D{0:02d}".format(n + 1)
+
+
+def addDecisionPoint(taskId, gate, context, options):
+    pointId = nextDecisionPointId(taskId)
+    with getConn() as conn:
+        conn.execute(
+            "INSERT INTO decisionPoints (taskId, pointId, gate, context, optionsJson) VALUES (?, ?, ?, ?, ?)",
+            (taskId, pointId, gate, context, _json.dumps(options, ensure_ascii=False)),
+        )
+    return pointId
+
+
+def getDecisionPoint(taskId, pointId):
+    with getConn() as conn:
+        row = conn.execute(
+            "SELECT * FROM decisionPoints WHERE taskId = ? AND pointId = ?",
+            (taskId, pointId),
+        ).fetchone()
+        if not row:
+            return None
+        entry = dict(row)
+        entry["options"] = _json.loads(entry["optionsJson"])
+        return entry
+
+
+def getPendingDecisions(taskId, gate=None):
+    query = "SELECT * FROM decisionPoints WHERE taskId = ? AND status = 'pending'"
+    params = [taskId]
+    if gate is not None:
+        query += " AND gate = ?"
+        params.append(gate)
+    query += " ORDER BY id"
+    with getConn() as conn:
+        rows = conn.execute(query, params).fetchall()
+    result = []
+    for row in rows:
+        entry = dict(row)
+        entry["options"] = _json.loads(entry["optionsJson"])
+        result.append(entry)
+    return result
+
+
+def listDecisionPoints(taskId):
+    with getConn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM decisionPoints WHERE taskId = ? ORDER BY id",
+            (taskId,),
+        ).fetchall()
+    result = []
+    for row in rows:
+        entry = dict(row)
+        entry["options"] = _json.loads(entry["optionsJson"])
+        result.append(entry)
+    return result
+
+
+def resolveDecisionPoint(taskId, pointId, choice, rationale):
+    with getConn() as conn:
+        conn.execute(
+            "UPDATE decisionPoints SET status = 'resolved', choice = ?, rationale = ?, resolvedAt = datetime('now') WHERE taskId = ? AND pointId = ?",
+            (choice, rationale, taskId, pointId),
+        )
 
 
 # --- Audit ---

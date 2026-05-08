@@ -90,3 +90,5 @@ Quatro mecanismos complementares — escolha pelo tipo de pergunta:
 | `service-impact-analyzer` | `/blast-radius` — N instâncias em paralelo, uma por serviço | Varre um serviço e retorna bloco estruturado de impacto |
 | `test-reviewer` | Antes de concluir qualquer tarefa | Avalia qualidade de assertions: WEAK / ACCEPTABLE / STRONG |
 | `tasks-maintainer` | Final de sessão (Stop hook) ou conclusão de tarefa | Atualiza TASKS.md e move concluídos para HISTORY_TASKS.md |
+| `adversarial-reviewer` | `pipeline phase advance` para `plan`, `implementation`, `mutation` | Identifica pontos de decisão genuínos (>1 solução válida sem convenção); apresenta opções com argumentos neutros e bloqueia avanço até resolução pelo engenheiro |
+| `static-analysis` (gate, não agente) | `pipeline phase advance` para `static-analysis` | Auto-invoca ruff, bandit, vulture, pylint, radon (CC + MI) sobre arquivos do diff; bloqueia avanço se thresholds violados (0 violações para os primeiros, CC ≤ 10, MI ≥ 65) |

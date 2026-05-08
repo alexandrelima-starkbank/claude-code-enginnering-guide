@@ -269,11 +269,14 @@ class PhaseAdvanceTest(TestCase):
             db.advancePhase(taskId, "implementation")
             db.advancePhase(taskId, "mutation")
             db.recordMutation(taskId, 1, 1)
+            db.advancePhase(taskId, "static-analysis")
+            for tool in ("ruff", "bandit", "vulture", "pylint", "radon_cc", "radon_mi"):
+                db.addStaticAnalysisResult(taskId, tool, "metric", 0, 0, True, [])
             db.advancePhase(taskId, "done")
             task = db.getTask(taskId)
             self.assertEqual(task["phase"], "done")
             history = db.getPhaseHistory(taskId)
-            self.assertEqual(len(history), 7)
+            self.assertEqual(len(history), 8)
 
     def testAdvancePhase_TestsToImplementation_RequiresTestQuality(self):
         with useTempDb():
