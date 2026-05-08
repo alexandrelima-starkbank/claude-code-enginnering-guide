@@ -2,6 +2,11 @@
 # Stop — notificação macOS quando Claude termina uma tarefa.
 # Silencioso em ambientes sem osascript (CI/Linux).
 
+# Guard: evita recursão — o tasks-maintainer invoca claude, que também dispara Stop
+if [ -n "$TASKS_MAINTAINER_RUNNING" ]; then
+    exit 0
+fi
+
 if command -v osascript &>/dev/null; then
     osascript -e 'display notification "Tarefa concluída" with title "Claude Code" sound name "Glass"' 2>/dev/null
 fi
@@ -25,6 +30,7 @@ if ! command -v claude &>/dev/null; then
     exit 0
 fi
 
+export TASKS_MAINTAINER_RUNNING=1
 claude --agent tasks-maintainer -p "Verifique e atualize TASKS.md: mova tarefas concluídas para HISTORY_TASKS.md e atualize status das tarefas ativas." 2>/dev/null
 if [ $? -ne 0 ]; then
     echo "AVISO: tasks-maintainer falhou — TASKS.md pode estar desatualizado" >&2
