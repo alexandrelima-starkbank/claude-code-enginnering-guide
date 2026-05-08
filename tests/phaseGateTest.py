@@ -223,7 +223,7 @@ class PhaseGateTest(TestCase):
             db.recordMutation(taskId, 10, 9)
 
             with self.assertRaises(ValueError) as ctx:
-                db.advancePhase(taskId, "done")
+                db.advancePhase(taskId, "static-analysis")
 
             self.assertIn("100", str(ctx.exception))
 
@@ -235,9 +235,9 @@ class PhaseGateTest(TestCase):
             self._advanceToMutation(taskId)
             db.recordMutation(taskId, 10, 10)
 
-            db.advancePhase(taskId, "done")
+            db.advancePhase(taskId, "static-analysis")
 
-            self.assertEqual(db.getTask(taskId)["phase"], "done")
+            self.assertEqual(db.getTask(taskId)["phase"], "static-analysis")
 
     # ── R05: pipeline phase check command ─────────────────────────────────────
 

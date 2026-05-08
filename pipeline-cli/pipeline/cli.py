@@ -1,5 +1,6 @@
 import os
 import sys
+import json
 from json import dumps
 from pathlib import Path
 import click
@@ -26,7 +27,11 @@ from .db import (
     createIncident, updateIncident,
     getTaskAudit,
     getPlan, getPlanScope,
+    addDecisionPoint, getDecisionPoint, getPendingDecisions,
+    listDecisionPoints, resolveDecisionPoint,
+    getLatestStaticAnalysis,
 )
+from . import staticAnalysis as _staticAnalysis
 from .export import generateTasksMd, formatTask
 from . import vector
 from .indexer import indexDirectory, generateContextSection, indexFile, indexProject
@@ -158,13 +163,104 @@ def phase():
     pass
 
 
+_ADVERSARIAL_GATES = {
+    "plan": "spec_plan",
+    "implementation": "tests_impl",
+    "mutation": "impl_mutation",
+}
+
+_PREFERENCE_MARKERS = (
+    "melhor", "recomendad", "deveri", "preferi", "preferr", "preferable",
+    "ideal", "should ", "suggest", "ought ", "best option", "melhor opção",
+)
+
+
+def _containsPreferenceMarker(text):
+    if not text:
+        return False
+    lowered = text.lower()
+    return any(marker in lowered for marker in _PREFERENCE_MARKERS)
+
+
+def _runReviewerSubprocess(prompt):
+    import subprocess
+    return subprocess.run(
+        ["claude", "--agent", "adversarial-reviewer", "-p", prompt],
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+
+
+def _renderDecisionPoint(point):
+    click.echo("DECISÃO REQUERIDA [{0}] (gate {1}):".format(point["pointId"], point["gate"]))
+    click.echo("  Contexto: {0}".format(point["context"]))
+    for opt in point["options"]:
+        click.echo("  Opção {0}: {1}".format(opt.get("label", "?"), opt.get("description", "")))
+        for arg in opt.get("arguments", []):
+            click.echo("    - {0}".format(arg))
+    click.echo("  Resolva via: pipeline decision resolve {0} --point {1} --choice <texto> --rationale <texto>".format(
+        point["taskId"], point["pointId"],
+    ))
+
+
+def _invokeAdversarialReviewer(taskId, gate):
+    prompt = (
+        "Tarefa: {0}\nGate: {1}\nAnalise os artefatos da fase anterior e identifique pontos "
+        "de decisão genuínos (>1 solução válida sem convenção que defina o caminho). "
+        "Responda em JSON estrito: {{\"decision_points\": [...]}}.".format(taskId, gate)
+    )
+    try:
+        proc = _runReviewerSubprocess(prompt)
+    except Exception as e:
+        click.echo("AVISO: adversarial-reviewer indisponível ({0}) — prosseguindo sem revisão.".format(e), err=True)
+        return []
+    if proc.returncode != 0:
+        click.echo("AVISO: adversarial-reviewer falhou — prosseguindo sem revisão.", err=True)
+        return []
+    try:
+        payload = json.loads(proc.stdout)
+    except Exception:
+        click.echo("AVISO: adversarial-reviewer retornou saída inválida — prosseguindo sem revisão.", err=True)
+        return []
+    points = payload.get("decision_points", [])
+    stored = []
+    for raw in points:
+        for opt in raw.get("options", []):
+            for arg in opt.get("arguments", []):
+                if _containsPreferenceMarker(arg):
+                    click.echo("AVISO: argumento contém marcador de preferência: {0}".format(arg), err=True)
+        pointId = addDecisionPoint(taskId, gate, raw.get("context", ""), raw.get("options", []))
+        point = getDecisionPoint(taskId, pointId)
+        stored.append(point)
+    return stored
+
+
 @phase.command("advance")
 @click.argument("taskId")
 @click.option("--to", "toPhase", required=True, type=click.Choice(PHASES))
 @click.option("--reason", default=None)
 def phaseAdvance(taskId, toPhase, reason):
+    if toPhase in _ADVERSARIAL_GATES:
+        gate = _ADVERSARIAL_GATES[toPhase]
+        pending = getPendingDecisions(taskId, gate=gate)
+        if pending:
+            click.echo("BLOQUEADO: decisão pendente — resolva os pontos abaixo antes de avançar.", err=True)
+            for point in pending:
+                _renderDecisionPoint(point)
+            sys.exit(1)
+        raised = _invokeAdversarialReviewer(taskId, gate)
+        if raised:
+            click.echo("BLOQUEADO: adversarial-reviewer identificou ponto(s) de decisão.", err=True)
+            for point in raised:
+                _renderDecisionPoint(point)
+            sys.exit(1)
+        click.echo("Nenhum ponto de decisão identificado — gate {0} liberado.".format(gate))
     if toPhase == "tests":
         _printBlastRadiusAdvisory(taskId)
+    if toPhase == "static-analysis":
+        if not _invokeStaticAnalysis(taskId):
+            sys.exit(1)
     try:
         advancePhase(taskId, toPhase, reason)
         click.echo("{0} → fase: {1}".format(taskId, toPhase))
@@ -172,6 +268,30 @@ def phaseAdvance(taskId, toPhase, reason):
     except ValueError as e:
         click.echo("ERRO: {0}".format(e), err=True)
         sys.exit(1)
+
+
+def _invokeStaticAnalysis(taskId):
+    try:
+        results = _staticAnalysis.runAll(taskId)
+    except _staticAnalysis.MissingToolError as e:
+        click.echo("ERRO: {0}".format(e), err=True)
+        return False
+    if not results:
+        click.echo("AVISO: nenhum arquivo .py modificado no diff — gate liberado por vacuidade.")
+        return True
+    files = _staticAnalysis._filesFromGitDiff(taskId)
+    for warning in _staticAnalysis._compareWithPlanScope(taskId, files):
+        click.echo(warning)
+    failing = [r for r in results if not r["passed"]]
+    if failing:
+        click.echo("BLOQUEADO: análise estática reprovou — detalhes abaixo.", err=True)
+        for r in failing:
+            click.echo("  [{0}] value={1} threshold={2}".format(r["tool"], r["value"], r["threshold"]))
+            for d in r.get("details", []):
+                click.echo("    - {0}".format(d))
+        return False
+    click.echo("Análise estática: todas as ferramentas passaram.")
+    return True
 
 
 def _printBlastRadiusAdvisory(taskId):
@@ -467,6 +587,84 @@ def incidentCreate(taskId, severity, level, currentBehavior, expectedBehavior):
 def incidentUpdate(taskId, rootCause, rootCauseConfidence):
     updateIncident(taskId, rootCause=rootCause, rootCauseConfidence=rootCauseConfidence)
     click.echo("{0} atualizado.".format(taskId))
+
+
+# ─── STATIC ANALYSIS ──────────────────────────────────────────────────────────
+
+@cli.group("static-analysis")
+def staticAnalysisGroup():
+    pass
+
+
+@staticAnalysisGroup.command("run")
+@click.argument("taskId")
+def staticAnalysisRun(taskId):
+    if not _invokeStaticAnalysis(taskId):
+        sys.exit(1)
+
+
+@staticAnalysisGroup.command("list")
+@click.argument("taskId")
+def staticAnalysisListCmd(taskId):
+    rows = getLatestStaticAnalysis(taskId)
+    if not rows:
+        click.echo("Nenhum resultado para {0}.".format(taskId))
+        return
+    for r in rows:
+        icon = "✓" if r["passed"] else "✗"
+        click.echo("[{0}] {1} {2}={3} threshold={4}".format(
+            icon, r["tool"], r["metric"], r["value"], r["threshold"],
+        ))
+
+
+# ─── DECISION ─────────────────────────────────────────────────────────────────
+
+@cli.group()
+def decision():
+    pass
+
+
+@decision.command("list")
+@click.argument("taskId")
+@click.option("--format", "fmt", default="table", type=click.Choice(["table", "json"]))
+def decisionListCmd(taskId, fmt):
+    points = listDecisionPoints(taskId)
+    if fmt == "json":
+        click.echo(dumps(points, ensure_ascii=False, indent=2))
+        return
+    if not points:
+        click.echo("Nenhum ponto de decisão para {0}.".format(taskId))
+        return
+    for p in points:
+        icon = "✓" if p["status"] == "resolved" else "○"
+        click.echo("[{0}][{1}] {2} | {3}".format(p["pointId"], icon, p["gate"], p["context"][:80]))
+        if p["status"] == "resolved":
+            click.echo("    escolha: {0}".format(p.get("choice") or ""))
+
+
+@decision.command("resolve")
+@click.argument("taskId")
+@click.option("--point", "pointId", required=True, help="ID do ponto de decisão (ex: D01)")
+@click.option("--choice", required=True, help="Texto da opção escolhida")
+@click.option("--rationale", required=True, help="Justificativa da escolha")
+def decisionResolveCmd(taskId, pointId, choice, rationale):
+    point = getDecisionPoint(taskId, pointId)
+    if not point:
+        click.echo("ERRO: ponto {0} não encontrado para {1}.".format(pointId, taskId), err=True)
+        sys.exit(1)
+    if point["status"] == "resolved":
+        click.echo("ERRO: ponto {0} já resolvido.".format(pointId), err=True)
+        sys.exit(1)
+    resolveDecisionPoint(taskId, pointId, choice, rationale)
+    text = "Decisão {0} (gate {1}, task {2}): {3}\nEscolha: {4}\nJustificativa: {5}".format(
+        pointId, point["gate"], taskId, point["context"], choice, rationale,
+    )
+    if vector.isAvailable():
+        task = getTask(taskId)
+        projectId = task["projectId"] if task else None
+        vector.addContext(text, "decision", projectId, taskId)
+    click.echo("{0} resolvido — registrado no contexto.".format(pointId))
+    autoRegenTasksMd()
 
 
 # ─── AUDIT ────────────────────────────────────────────────────────────────────

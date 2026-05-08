@@ -53,12 +53,41 @@ Transição de fase é irreversível via CLI. O comando `pipeline phase advance`
 
 ```
 requirements → spec      requer: EARS aprovados + quality scores registrados
-spec → plan              requer: critérios aprovados, test methods mapeados
+spec → plan              requer: critérios aprovados, test methods mapeados; adversarial-reviewer libera (gate spec_plan)
 plan → tests             requer: plan aprovado (blast-radius advisory exibido)
-tests → implementation   requer: testes executados (ao menos 1 registrado)
-implementation → mutation requer: todos os testes passando
-mutation → done          requer: mutation score = 100%
+tests → implementation   requer: testes executados; adversarial-reviewer libera (gate tests_impl)
+implementation → mutation requer: todos os testes passando; adversarial-reviewer libera (gate impl_mutation)
+mutation → static-analysis requer: mutation score = 100%; análise estática auto-invocada (ruff, bandit, vulture, pylint, radon CC + MI)
+static-analysis → done   requer: ruff/bandit/vulture/pylint = 0 violações, CC ≤ 10, MI ≥ 36 — todos com run passing
 ```
+
+### Static Analysis Gate
+
+Ao avançar `mutation → static-analysis`, o sistema executa automaticamente análise sobre os arquivos
+do diff `git diff development...HEAD` (excluindo arquivos de teste do CC). Thresholds:
+
+| Ferramenta | Métrica | Threshold |
+|---|---|---|
+| ruff | violations | = 0 |
+| bandit | violations | = 0 |
+| vulture | dead code | = 0 |
+| pylint | smells | = 0 |
+| radon (CC) | máx por bloco | ≤ 10 |
+| radon (MI) | mín por arquivo | ≥ 36 (calibrado para convenção sem comentários) |
+
+Resultados persistidos em `staticAnalysisResults`. Divergência entre `git diff` e `planScope`
+é exibida como advisory (não bloqueia).
+
+Em cada um dos três gates de revisão adversarial (`spec_plan`, `tests_impl`, `impl_mutation`),
+o agente `adversarial-reviewer` é invocado automaticamente. Se identificar pontos de decisão
+genuínos (mais de uma solução válida sem convenção que defina o caminho), o gate bloqueia
+até o engenheiro resolver via:
+
+```bash
+pipeline decision resolve T<N> --point D01 --choice "<texto>" --rationale "<justificativa>"
+```
+
+A decisão é persistida no ChromaDB como contexto arquitetural.
 
 ---
 

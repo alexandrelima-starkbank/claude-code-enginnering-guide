@@ -143,6 +143,24 @@ else
     fi
 fi
 
+# ─── static-analysis tools ───────────────────────────────────────────────────
+# Usado pelo gate `mutation → static-analysis` (ruff já validado acima)
+for _tool in bandit vulture pylint radon; do
+    if command -v "$_tool" &>/dev/null; then
+        ok "$_tool $($_tool --version 2>/dev/null | head -1)"
+    else
+        warn "$_tool não encontrado — gate static-analysis falhará"
+        if command -v pip3 &>/dev/null; then
+            pip3 install "$_tool" --quiet 2>/dev/null \
+                || pip3 install "$_tool" --quiet --user 2>/dev/null \
+                && ok "$_tool instalado" \
+                || warn "  → pip3 install $_tool --user"
+        else
+            warn "  → pip3 install $_tool"
+        fi
+    fi
+done
+
 # ─── mutmut.toml — paths_to_mutate ───────────────────────────────────────────
 # Ignorado em workspace: mutmut.toml na raiz é irrelevante quando há sub-repos.
 _WORKSPACE_COUNT=0
