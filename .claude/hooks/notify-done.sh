@@ -21,10 +21,6 @@ if [ -z "$NEEDS_MAINTENANCE" ] || [ "$NEEDS_MAINTENANCE" = "0" ]; then
     exit 0
 fi
 
-if command -v osascript &>/dev/null; then
-    osascript -e 'display notification "Tarefa concluída" with title "Claude Code" sound name "Glass"' 2>/dev/null
-fi
-
 if ! command -v claude &>/dev/null; then
     echo "AVISO: claude CLI indisponível — tasks-maintainer não invocado" >&2
     exit 0
