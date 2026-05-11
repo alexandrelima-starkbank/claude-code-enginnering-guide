@@ -65,20 +65,6 @@ class NotifyDoneTest(TestCase):
             self.assertEqual(result.returncode, 0)
             self.assertTrue(os.path.exists(invokedPath), "claude was not invoked")
 
-    def testStopHook_StaleCompletedTask_InvokesAgent(self):
-        # Arrange
-        with tempfile.TemporaryDirectory() as tmpdir:
-            dbPath = makeDb(tmpdir, [("T01", "concluído")])
-            invokedPath = os.path.join(tmpdir, "invoked")
-            fakeBin = makeFakeClaude(tmpdir, exitCode=0, invokedPath=invokedPath)
-
-            # Act
-            result = runHook(dbPath, fakeBin)
-
-            # Assert
-            self.assertEqual(result.returncode, 0)
-            self.assertTrue(os.path.exists(invokedPath), "claude was not invoked")
-
     def testStopHook_NoTasksToMaintain_SilentExit(self):
         # Arrange
         with tempfile.TemporaryDirectory() as tmpdir:

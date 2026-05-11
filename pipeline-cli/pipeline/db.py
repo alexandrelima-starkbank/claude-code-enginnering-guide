@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from threading import local
 from datetime import datetime
@@ -307,10 +308,13 @@ def _checkPhaseGates(task, toPhase):
         approvedEars = [r for r in ears if r["approved"]]
         if approvedEars:
             scores = getEarsQualityScores(taskId)
-            passedScores = bool(scores)
+            apiKeyMissing = not os.environ.get("ANTHROPIC_API_KEY")
+            passedScores = bool(scores) or apiKeyMissing
             detailScores = (
                 "{0} score(s) registrados".format(len(scores))
-                if passedScores
+                if scores
+                else "ANTHROPIC_API_KEY não configurada — scoring ignorado"
+                if apiKeyMissing
                 else "quality scoring não executado — rode 'pipeline ears score {0}'".format(taskId)
             )
             results.append(("Quality scores", passedScores, detailScores))

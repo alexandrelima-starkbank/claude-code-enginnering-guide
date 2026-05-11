@@ -2,8 +2,8 @@ import os
 import sys
 import tempfile
 from pathlib import Path
-from unittest import TestCase, main
 from unittest.mock import patch
+from unittest import TestCase, main
 
 PROJECT_ROOT = os.path.join(os.path.dirname(__file__), "..")
 sys.path.insert(0, os.path.join(PROJECT_ROOT, "pipeline-cli"))
@@ -227,6 +227,31 @@ class GenerateTasksMdTest(TestCase):
             result = generateTasksMd(projectId="proj-a")
             self.assertIn("Task A", result)
             self.assertNotIn("Task B", result)
+
+    def testGenerateTasksMd_CancelledTaskInHistory(self):
+        with useTempDb():
+            db.initDb()
+            db.ensureProject("proj")
+            taskId = db.createTask("proj", "Cancelled task")
+            db.updateTask(taskId, status="cancelado")
+            result = generateTasksMd(projectId="proj")
+            historySection = result.split("## Histórico")[1]
+            activeSection = result.split("## Histórico")[0]
+            self.assertIn("Cancelled task", historySection)
+            self.assertNotIn("Cancelled task", activeSection)
+
+    def testGenerateTasksMd_CancelledTaskNotInActiveTasks(self):
+        with useTempDb():
+            db.initDb()
+            db.ensureProject("proj")
+            t1 = db.createTask("proj", "Active task")
+            t2 = db.createTask("proj", "Cancelled task")
+            db.updateTask(t1, status="em andamento")
+            db.updateTask(t2, status="cancelado")
+            result = generateTasksMd(projectId="proj")
+            activeSection = result.split("## Histórico")[0]
+            self.assertIn("Active task", activeSection)
+            self.assertNotIn("Cancelled task", activeSection)
 
 
 if __name__ == "__main__":

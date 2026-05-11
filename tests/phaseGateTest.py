@@ -69,16 +69,29 @@ class PhaseGateTest(TestCase):
             self.assertIn("EARS", str(ctx.exception))
 
     def testAdvanceToSpec_WithNoQualityScores_Rejects(self):
-        # Critério: lança ValueError quando EARS aprovados mas sem quality scores
+        # Critério: lança ValueError quando EARS aprovados mas sem quality scores e API key presente
         with useTempDb():
             db.initDb()
             taskId = self._setup()
             self._addApprovedEars(taskId)
 
-            with self.assertRaises(ValueError) as ctx:
-                db.advancePhase(taskId, "spec")
+            with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
+                with self.assertRaises(ValueError) as ctx:
+                    db.advancePhase(taskId, "spec")
 
             self.assertIn("quality", str(ctx.exception).lower())
+
+    def testAdvanceToSpec_WithNoApiKey_AndNoScores_Succeeds(self):
+        # Critério: gate passa sem quality scores quando ANTHROPIC_API_KEY não está configurada
+        with useTempDb():
+            db.initDb()
+            taskId = self._setup()
+            self._addApprovedEars(taskId)
+
+            with patch.dict(os.environ, {}, clear=True):
+                db.advancePhase(taskId, "spec")
+
+            self.assertEqual(db.getTask(taskId)["phase"], "spec")
 
     def testAdvanceToSpec_WithQualityScores_Succeeds(self):
         # Critério: executa sem erro quando EARS aprovados e quality scores registrados
