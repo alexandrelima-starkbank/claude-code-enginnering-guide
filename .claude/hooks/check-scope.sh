@@ -17,6 +17,11 @@ if [ -z "$FILE_PATH" ]; then
     exit 0
 fi
 
+PROJECT_ROOT="${CLAUDE_HOOKS_DIR%/.claude/hooks}"
+if [[ "$FILE_PATH" == "$PROJECT_ROOT/"* ]]; then
+    FILE_PATH="${FILE_PATH#$PROJECT_ROOT/}"
+fi
+
 DB_PATH="${PIPELINE_DB_PATH:-$HOME/.claude/pipeline/pipeline.db}"
 
 if [ ! -f "$DB_PATH" ]; then
