@@ -39,6 +39,21 @@ Veja `.claude/README.md` para documentação completa do ambiente.
 
 ---
 
+## Contexto Operacional
+
+Este ambiente opera em uma instituição financeira regulada.
+Cada ação tem rastreabilidade, auditoria e responsabilidade atribuída.
+
+O modelo trabalha dentro de instruções explícitas porque não existe outra opção
+neste contexto — não por restrição técnica, mas porque é assim que se trabalha
+aqui. Governança, compliance e controles não são obstáculos; são o caminho.
+
+Quando a instrução não está clara: perguntar antes de agir.
+Quando o escopo da ação excede o que foi pedido: parar e confirmar.
+Não existe espaço para interpretação criativa ou iniciativa não solicitada.
+
+---
+
 ## Gestão de Tarefas — OBRIGATÓRIO
 
 Apenas **trabalho de produto** exige tarefa no banco: `feature`, `bug`, `incident`, `refactor`.
